@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus/ctxlogrus"
 	"github.com/sirupsen/logrus"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
+	"gitlab.com/gitlab-org/gitaly/v15/internal/git/localrepo"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/updateref"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git2go"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/gitaly/hook"
@@ -34,6 +36,47 @@ func validateMergeBranchRequest(request *gitalypb.UserMergeBranchRequest) error 
 	}
 
 	return nil
+}
+
+func (s *Server) Perform_git2go_UserMergeBranch(
+	ctx context.Context,
+	repoPath string,
+	quarantineRepo *localrepo.Repo,
+	authorName string,
+	authorMail string,
+	authorDate time.Time,
+	message string,
+	ours string,
+	theirs string,
+) (git.ObjectID, error) {
+
+	merge, err := s.git2goExecutor.Merge(ctx, quarantineRepo, git2go.MergeCommand{
+		Repository: repoPath,
+		AuthorName: authorName,
+		AuthorMail: authorMail,
+		AuthorDate: authorDate,
+		Message:    message,
+		Ours:       ours,
+		Theirs:     theirs,
+	})
+
+	if err != nil {
+		if errors.Is(err, git2go.ErrInvalidArgument) {
+			return "", helper.ErrInvalidArgument(err)
+		}
+
+		if strings.Contains(err.Error(), "could not auto-merge due to conflicts") || errors.As(err, &git2go.ConflictingFilesError{}) {
+			return "", helper.ErrFailedPreconditionf("Failed to merge for source_sha %s into target_sha %s", theirs, ours)
+		}
+		return "", helper.ErrInternal(err)
+	}
+
+	mergeOID, err := git.NewObjectIDFromHex(merge.CommitID)
+	if err != nil {
+		return "", helper.ErrInternalf("could not parse merge ID: %w", err)
+	}
+
+	return mergeOID, nil
 }
 
 //nolint: revive,stylecheck // This is unintentionally missing documentation.
@@ -71,34 +114,19 @@ func (s *Server) UserMergeBranch(stream gitalypb.OperationService_UserMergeBranc
 		return helper.ErrInvalidArgument(err)
 	}
 
-	merge, err := s.git2goExecutor.Merge(ctx, quarantineRepo, git2go.MergeCommand{
-		Repository: repoPath,
-		AuthorName: string(firstRequest.User.Name),
-		AuthorMail: string(firstRequest.User.Email),
-		AuthorDate: authorDate,
-		Message:    string(firstRequest.Message),
-		Ours:       revision.String(),
-		Theirs:     firstRequest.CommitId,
-	})
+	mergeOID, err := s.Perform_git2go_UserMergeBranch(ctx, repoPath, quarantineRepo,
+		string(firstRequest.User.Name),
+		string(firstRequest.User.Email),
+		authorDate,
+		string(firstRequest.Message),
+		revision.String(),
+		firstRequest.CommitId)
 	if err != nil {
-		if errors.Is(err, git2go.ErrInvalidArgument) {
-			return helper.ErrInvalidArgument(err)
-		}
-
-		if strings.Contains(err.Error(), "could not auto-merge due to conflicts") || errors.As(err, &git2go.ConflictingFilesError{}) {
-			return helper.ErrFailedPreconditionf("Failed to merge for source_sha %s into target_sha %s",
-				firstRequest.CommitId, revision.String())
-		}
-		return helper.ErrInternal(err)
-	}
-
-	mergeOID, err := git.NewObjectIDFromHex(merge.CommitID)
-	if err != nil {
-		return helper.ErrInternalf("could not parse merge ID: %w", err)
+		return err
 	}
 
 	if err := stream.Send(&gitalypb.UserMergeBranchResponse{
-		CommitId: merge.CommitID,
+		CommitId: mergeOID.String(),
 	}); err != nil {
 		return err
 	}
@@ -180,7 +208,7 @@ func (s *Server) UserMergeBranch(stream gitalypb.OperationService_UserMergeBranc
 
 	if err := stream.Send(&gitalypb.UserMergeBranchResponse{
 		BranchUpdate: &gitalypb.OperationBranchUpdate{
-			CommitId:      merge.CommitID,
+			CommitId:      mergeOID.String(),
 			RepoCreated:   false,
 			BranchCreated: false,
 		},
