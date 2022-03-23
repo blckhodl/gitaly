@@ -15,6 +15,7 @@ import (
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git2go"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/gitaly/hook"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
+	"gitlab.com/gitlab-org/gitaly/v15/internal/metadata/featureflag"
 	"gitlab.com/gitlab-org/gitaly/v15/proto/go/gitalypb"
 )
 
@@ -36,6 +37,21 @@ func validateMergeBranchRequest(request *gitalypb.UserMergeBranchRequest) error 
 	}
 
 	return nil
+}
+
+func (s *Server) Perform_git_UserMergeBranch(
+	ctx context.Context,
+	repoPath string,
+	quarantineRepo *localrepo.Repo,
+	authorName string,
+	authorMail string,
+	authorDate time.Time,
+	message string,
+	ours string,
+	theirs string,
+) (git.ObjectID, error) {
+
+	return "", helper.ErrInternalf("UserMergeBranch using Git is not yet implemented")
 }
 
 func (s *Server) Perform_git2go_UserMergeBranch(
@@ -114,15 +130,28 @@ func (s *Server) UserMergeBranch(stream gitalypb.OperationService_UserMergeBranc
 		return helper.ErrInvalidArgument(err)
 	}
 
-	mergeOID, err := s.Perform_git2go_UserMergeBranch(ctx, repoPath, quarantineRepo,
-		string(firstRequest.User.Name),
-		string(firstRequest.User.Email),
-		authorDate,
-		string(firstRequest.Message),
-		revision.String(),
-		firstRequest.CommitId)
-	if err != nil {
-		return err
+	var mergeOID git.ObjectID
+	var mergeErr error
+
+	if featureflag.MergeGitMergeTree.IsEnabled(ctx) {
+		mergeOID, mergeErr = s.Perform_git_UserMergeBranch(ctx, repoPath, quarantineRepo,
+			string(firstRequest.User.Name),
+			string(firstRequest.User.Email),
+			authorDate,
+			string(firstRequest.Message),
+			revision.String(),
+			firstRequest.CommitId)
+	} else {
+		mergeOID, mergeErr = s.Perform_git2go_UserMergeBranch(ctx, repoPath, quarantineRepo,
+			string(firstRequest.User.Name),
+			string(firstRequest.User.Email),
+			authorDate,
+			string(firstRequest.Message),
+			revision.String(),
+			firstRequest.CommitId)
+	}
+	if mergeErr != nil {
+		return mergeErr
 	}
 
 	if err := stream.Send(&gitalypb.UserMergeBranchResponse{
