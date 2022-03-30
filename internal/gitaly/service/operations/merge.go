@@ -1,6 +1,8 @@
 package operations
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -15,6 +17,7 @@ import (
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git2go"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/gitaly/hook"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
+	"gitlab.com/gitlab-org/gitaly/v15/internal/helper/text"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/metadata/featureflag"
 	"gitlab.com/gitlab-org/gitaly/v15/proto/go/gitalypb"
 )
@@ -39,6 +42,60 @@ func validateMergeBranchRequest(request *gitalypb.UserMergeBranchRequest) error 
 	return nil
 }
 
+// This should probably use something like gittest.WriteCommit(), but
+// gittest stuff is supposed to be used only in tests...
+func createCommitFromTree(
+	ctx context.Context,
+	quarantineRepo *localrepo.Repo,
+	resultTree []byte,
+	authorName string,
+	authorMail string,
+	authorDate time.Time,
+	message string,
+	ours string,
+	theirs string,
+) (string, error) {
+	commitEnv := []string{
+                // "GIT_COMMITTER_NAME=" + string(req.GetUser().Name),
+                // "GIT_COMMITTER_EMAIL=" + string(req.GetUser().Email),
+                // fmt.Sprintf("GIT_COMMITTER_DATE=%d %s", commitDate.Unix(), commitDate.Format("-0700")),
+                "GIT_AUTHOR_NAME=" + authorName,
+                "GIT_AUTHOR_EMAIL=" + authorMail,
+		fmt.Sprintf("GIT_AUTHOR_DATE=%d %s", authorDate.Unix(), authorDate.Format("-0700")),
+        }
+
+        flags := []git.Option{
+                git.ValueFlag{
+                        Name:  "-m",
+                        Value: message,
+                },
+                git.ValueFlag{
+                        Name:  "-p",
+                        Value: ours,
+                },
+                git.ValueFlag{
+                        Name:  "-p",
+                        Value: theirs,
+                },
+        }
+
+        var stdout, stderr bytes.Buffer
+        if err := quarantineRepo.ExecAndWait(ctx, git.SubCmd{
+                Name:  "commit-tree",
+                Flags: flags,
+                Args: []string{
+                        string(resultTree),
+                },
+        }, git.WithStdout(&stdout), git.WithStderr(&stderr), git.WithEnv(commitEnv...)); err != nil {
+                return "", fmt.Errorf("creating commit: %w", gitError{
+                        Err:    err,
+                        ErrMsg: stderr.String(),
+                })
+	}
+
+	return text.ChompBytes(stdout.Bytes()), nil
+}
+
 func (s *Server) Perform_git_UserMergeBranch(
 	ctx context.Context,
 	repoPath string,
@@ -51,7 +108,50 @@ func (s *Server) Perform_git_UserMergeBranch(
 	theirs string,
 ) (git.ObjectID, error) {
 
-	return "", helper.ErrInternalf("UserMergeBranch using Git is not yet implemented")
+	var mergeTreeStderr bytes.Buffer
+	var mergeTreeStdout bytes.Buffer
+	cmdMergeTree, err := s.gitCmdFactory.New(ctx, quarantineRepo,
+		git.SubCmd{
+			Name: "merge-tree",
+			Flags: []git.Option{
+				git.Flag{Name: "--write-tree"},
+				git.Flag{Name: "-z"},
+			},
+			Args: []string{ours, theirs},
+		},
+		git.WithStderr(&mergeTreeStderr),
+		git.WithStdout(&mergeTreeStdout),
+	)
+	if err != nil {
+		return "", fmt.Errorf("merge-tree: %w", gitError{ErrMsg: mergeTreeStderr.String(), Err: err})
+	}
+
+	if err := cmdMergeTree.Wait(); err != nil {
+		return "", fmt.Errorf("wait for 'git merge-tree': %w", gitError{ErrMsg: mergeTreeStderr.String(), Err: err})
+	}
+
+	// Parse mergeTreeStdout to get the resulting tree and create a commit with it
+	var resultTree []byte
+	if _, resultTree, err = bufio.ScanLines(mergeTreeStdout.Bytes(), true); err != nil {
+		return "", fmt.Errorf("parse 'git merge-tree' output: %w", err)
+	}
+
+	var commit string
+	if commit, err = createCommitFromTree(
+		ctx, quarantineRepo, resultTree,
+		authorName, authorMail, authorDate,
+		message, ours, theirs,
+	); err != nil {
+		return "", fmt.Errorf("create commit from tree: %w", err)
+	}
+
+	commitID, err := git.NewObjectIDFromHex(commit)
+	if err != nil {
+		return "", helper.ErrInternalf("could not parse commit ID: %w", err)
+	}
+
+	// TODO?: Move current branch to new commit?
+	return commitID, nil
 }
 
 func (s *Server) Perform_git2go_UserMergeBranch(
