@@ -180,6 +180,9 @@ var commandDescriptions = map[string]commandDescription{
 	"merge-file": {
 		flags: scNoRefUpdates,
 	},
+	"merge-tree": {
+		flags: scNoRefUpdates,
+	},
 	"mktag": {
 		flags: scNoRefUpdates,
 	},
