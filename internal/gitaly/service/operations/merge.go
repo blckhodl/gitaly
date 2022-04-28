@@ -55,14 +55,17 @@ func createCommitFromTree(
 	ours string,
 	theirs string,
 ) (string, error) {
+	authorDateEnv := fmt.Sprintf("%d %s", authorDate.Unix(), authorDate.Format("-0700"))
 	commitEnv := []string{
-                // "GIT_COMMITTER_NAME=" + string(req.GetUser().Name),
-                // "GIT_COMMITTER_EMAIL=" + string(req.GetUser().Email),
-                // fmt.Sprintf("GIT_COMMITTER_DATE=%d %s", commitDate.Unix(), commitDate.Format("-0700")),
+                "GIT_COMMITTER_NAME=" + authorName,
+                "GIT_COMMITTER_EMAIL=" + authorMail,
+                "GIT_COMMITTER_DATE=" + authorDateEnv,
                 "GIT_AUTHOR_NAME=" + authorName,
                 "GIT_AUTHOR_EMAIL=" + authorMail,
-		fmt.Sprintf("GIT_AUTHOR_DATE=%d %s", authorDate.Unix(), authorDate.Format("-0700")),
+		"GIT_AUTHOR_DATE=" + authorDateEnv,
         }
+
+	fmt.Println("date env: " + authorDateEnv);
 
         flags := []git.Option{
                 git.ValueFlag{
@@ -135,6 +138,9 @@ func (s *Server) Perform_git_UserMergeBranch(
 	if _, resultTree, err = bufio.ScanLines(mergeTreeStdout.Bytes(), true); err != nil {
 		return "", fmt.Errorf("parse 'git merge-tree' output: %w", err)
 	}
+
+	// Remove null byte at the end of the tree
+	resultTree = bytes.Trim(resultTree, "\x00")
 
 	var commit string
 	if commit, err = createCommitFromTree(
