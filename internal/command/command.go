@@ -141,7 +141,8 @@ type Command struct {
 
 	finalizer func(*Command)
 
-	span opentracing.Span
+	span       opentracing.Span
+	spanIsOurs bool
 
 	metricsCmd    string
 	metricsSubCmd string
@@ -164,11 +165,14 @@ func New(ctx context.Context, cmd *exec.Cmd, opts ...Option) (*Command, error) {
 		opt(&cfg)
 	}
 
-	span, ctx := opentracing.StartSpanFromContext(
-		ctx,
-		cmd.Path,
-		opentracing.Tag{Key: "args", Value: strings.Join(cmd.Args, " ")},
-	)
+	spanIsOurs := cfg.span == nil
+	if spanIsOurs {
+		cfg.span, ctx = opentracing.StartSpanFromContext(
+			ctx,
+			cmd.Path,
+			opentracing.Tag{Key: "args", Value: strings.Join(cmd.Args, " ")},
+		)
+	}
 
 	spawnStartTime := time.Now()
 	putToken, err := getSpawnToken(ctx)
@@ -196,7 +200,8 @@ func New(ctx context.Context, cmd *exec.Cmd, opts ...Option) (*Command, error) {
 		cmd:           cmd,
 		startTime:     time.Now(),
 		context:       ctx,
-		span:          span,
+		span:          cfg.span,
+		spanIsOurs:    spanIsOurs,
 		finalizer:     cfg.finalizer,
 		metricsCmd:    cfg.commandName,
 		metricsSubCmd: cfg.subcommandName,
@@ -448,7 +453,9 @@ func (c *Command) logProcessComplete() {
 			"majflt", rusage.Majflt,
 		)
 	}
-	c.span.Finish()
+	if c.spanIsOurs {
+		c.span.Finish()
+	}
 }
 
 // Args is an accessor for the command arguments
