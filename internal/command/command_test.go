@@ -248,6 +248,19 @@ func TestNew_nulByteInArgument(t *testing.T) {
 	require.Nil(t, cmd)
 }
 
+func TestNew_cmdEnv(t *testing.T) {
+	t.Parallel()
+
+	ctx := testhelper.Context(t)
+
+	execCmd := exec.Command("true")
+	execCmd.Env = []string{"foo=bar"}
+
+	cmd, err := New(ctx, execCmd)
+	require.Equal(t, fmt.Errorf("setting exec.Cmd.Env is not allowed, use command.WithEnvironment() instead"), err)
+	require.Nil(t, cmd)
+}
+
 func TestNew_missingBinary(t *testing.T) {
 	t.Parallel()
 

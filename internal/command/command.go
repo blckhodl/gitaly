@@ -155,7 +155,7 @@ func New(ctx context.Context, cmd *exec.Cmd, opts ...Option) (*Command, error) {
 		panic(contextWithoutDonePanic("command spawned with context without Done() channel"))
 	}
 
-	if err := checkNullArgv(cmd); err != nil {
+	if err := checkCmd(cmd); err != nil {
 		return nil, err
 	}
 
@@ -531,16 +531,24 @@ func methodFromContext(ctx context.Context) (service string, method string) {
 	return "", ""
 }
 
-// Command arguments will be passed to the exec syscall as
-// null-terminated C strings. That means the arguments themselves may not
-// contain a null byte. The go stdlib checks for null bytes but it
-// returns a cryptic error. This function returns a more explicit error.
-func checkNullArgv(cmd *exec.Cmd) error {
+// checkCmd verifies if the incoming exec.Cmd passes a few criteria.
+func checkCmd(cmd *exec.Cmd) error {
+	// Command arguments will be passed to the exec syscall as
+	// null-terminated C strings. That means the arguments themselves may not
+	// contain a null byte. The go stdlib checks for null bytes but it
+	// returns a cryptic error. This function returns a more explicit error.
 	for _, arg := range cmd.Args {
 		if strings.IndexByte(arg, 0) > -1 {
 			// Use %q so that the null byte gets printed as \x00
 			return fmt.Errorf("detected null byte in command argument %q", arg)
 		}
+	}
+
+	// The cmd.Env will be overwritten with AllowedEnvironment() and whatever
+	// is set using command.WithEnvironment(). To make this clear to the user, error
+	// out when the Env is set directly on the exec.Cmd.
+	if len(cmd.Env) > 0 {
+		return fmt.Errorf("setting exec.Cmd.Env is not allowed, use command.WithEnvironment() instead")
 	}
 
 	return nil
