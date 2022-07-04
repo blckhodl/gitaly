@@ -7,8 +7,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/cgroups"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/command"
@@ -393,14 +395,33 @@ func (cf *ExecCommandFactory) newCommand(ctx context.Context, repo repository.Gi
 
 	env = append(env, execEnv.EnvironmentVariables...)
 
+	span, ctx := opentracing.StartSpanFromContext(
+		ctx,
+		"git",
+		opentracing.Tag{Key: "args", Value: strings.Join(args, " ")},
+	)
+
 	execCommand := exec.Command(execEnv.BinaryPath, args...)
 	execCommand.Dir = dir
+
+	trace2Env, trace2Cleanup, err := enableTrace2(ctx, span)
+	if err != nil {
+		return nil, err
+	}
+	env = append(env, trace2Env...)
+
+	finalizer := func(*command.Command) {
+		trace2Cleanup()
+		span.Finish()
+	}
 
 	command, err := command.New(ctx, execCommand, append(
 		config.commandOpts,
 		command.WithEnvironment(env),
+		command.WithSpan(span),
 		command.WithCommandName("git", sc.Subcommand()),
 		command.WithCgroup(cf.cgroupsManager, repo),
+		command.WithFinalizer(finalizer),
 	)...)
 	if err != nil {
 		return nil, err
