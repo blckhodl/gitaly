@@ -263,6 +263,7 @@ find_go_sources              = $(shell find ${SOURCE_DIR} -type d \( -name ruby 
 GITALY_PROTOC_OPTS            := --plugin=${PROTOC_GEN_GO} --plugin=${PROTOC_GEN_GO_GRPC} --plugin=${PROTOC_GEN_GITALY_PROTOLIST} --go_opt=paths=source_relative --go-grpc_opt=paths=source_relative
 GITALY_PROTO_DEFINITIONS      := $(wildcard ${SOURCE_DIR}/proto/*.proto)
 GITALY_PROTO_GO_CODE          := ${SOURCE_DIR}/proto/go/gitalypb/protolist.go $(patsubst ${SOURCE_DIR}/proto/%.proto,${SOURCE_DIR}/proto/go/gitalypb/%.pb.go,${GITALY_PROTO_DEFINITIONS})
+GITALY_PROTO_RUBY_CODE        := ${SOURCE_DIR}/ruby/proto/gitaly.rb $(patsubst ${SOURCE_DIR}/proto/%.proto,${SOURCE_DIR}/ruby/proto/gitaly/%_pb.rb,${GITALY_PROTO_DEFINITIONS})
 GITALY_PROTO_TEST_DEFINITIONS := $(shell find ${SOURCE_DIR}/internal/ ${SOURCE_DIR}/tools -type f -name '*.proto')
 GITALY_PROTO_TEST_CODE        := $(patsubst ${SOURCE_DIR}/%.proto,${SOURCE_DIR}/%.pb.go,${GITALY_PROTO_TEST_DEFINITIONS})
 
@@ -337,7 +338,7 @@ help:
 
 .PHONY: build
 ## Build Go binaries and install required Ruby Gems.
-build: ${SOURCE_DIR}/.ruby-bundle ${GITALY_INSTALLED_EXECUTABLES}
+build: ${SOURCE_DIR}/.ruby-bundle ${GITALY_PROTO_RUBY_CODE} ${GITALY_INSTALLED_EXECUTABLES}
 
 .PHONY: install
 ## Install Gitaly binaries. The target directory can be modified by setting PREFIX and DESTDIR.
@@ -501,12 +502,7 @@ cover: prepare-tests libgit2 ${GOCOVER_COBERTURA}
 
 .PHONY: proto
 ## Regenerate Protobuf definitions.
-proto: proto-ruby ${GITALY_PROTO_GO_CODE} ${GITALY_PROTO_TEST_CODE}
-
-.PHONY: proto-ruby
-## Regenerate Ruby's Protobuf definitions.
-proto-ruby: ${SOURCE_DIR}/.ruby-bundle
-	${SOURCE_DIR}/_support/generate-proto-ruby
+proto: ${GITALY_PROTO_GO_CODE} ${GITALY_PROTO_RUBY_CODE} ${GITALY_PROTO_TEST_CODE}
 
 .PHONY: check-proto
 check-proto: no-proto-changes lint-proto
@@ -521,7 +517,7 @@ no-changes:
 	${Q}${GIT} diff --exit-code
 
 .PHONY: no-proto-changes
-no-proto-changes: proto-ruby ${GITALY_PROTO_GO_CODE} ${GITALY_PROTO_TEST_CODE}
+no-proto-changes: proto
 	${Q}${GIT} diff --exit-code -- '*.pb.go' 'ruby/proto/gitaly'
 
 .PHONY: dump-database-schema
@@ -566,6 +562,8 @@ ${TOOLS_DIR}: | ${BUILD_DIR}
 ${DEPENDENCY_DIR}: | ${BUILD_DIR}
 	${Q}mkdir -p ${DEPENDENCY_DIR}
 ${SOURCE_DIR}/proto/go/gitalypb:
+	${Q}mkdir -p $@
+${SOURCE_DIR}/ruby/proto/gitaly:
 	${Q}mkdir -p $@
 
 # This target builds a full Git distribution and installs it into GIT_PREFIX.
@@ -716,6 +714,11 @@ ${SOURCE_DIR}/proto/go/gitalypb/%.pb.go: ${SOURCE_DIR}/proto/%.proto ${PROTOC} $
 # Generation of Go sources required by our tests.
 ${SOURCE_DIR}/%.pb.go: ${SOURCE_DIR}/%.proto ${PROTOC} ${PROTOC_GEN_GO} ${PROTOC_GEN_GO_GRPC}
 	${Q}${PROTOC} ${GITALY_PROTOC_OPTS} -I ${PROTOC_INSTALL_DIR}/include -I ${SOURCE_DIR}/proto -I ${SOURCE_DIR}/internal --go_out=${SOURCE_DIR}/internal --go-grpc_out=${SOURCE_DIR}/internal $<
+# Generation of Ruby sources from our Protobuf definitions.
+${SOURCE_DIR}/ruby/proto/gitaly.rb: $(filter-out ${SOURCE_DIR}/ruby/proto/gitaly.rb,${GITALY_PROTO_RUBY_CODE}) ${SOURCE_DIR}/.ruby-bundle | ${SOURCE_DIR}/ruby/proto/gitaly
+	${Q}${SOURCE_DIR}/_support/generate-proto-ruby
+${SOURCE_DIR}/ruby/proto/gitaly/%_pb.rb: ${SOURCE_DIR}/proto/%.proto ${PROTOC} ${SOURCE_DIR}/.ruby-bundle | ${SOURCE_DIR}/ruby/proto/gitaly
+	${Q}BUNDLE_GEMFILE=${SOURCE_DIR}/ruby/Gemfile bundle exec grpc_tools_ruby_protoc ${GITALY_PROTOC_OPTS} -I ${PROTOC_INSTALL_DIR}/include -I ${SOURCE_DIR}/proto --ruby_out=$(dir $@) --grpc_out=$(dir $@) $<
 
 # External tools
 ${GOCOVER_COBERTURA}: TOOL_PACKAGE = github.com/t-yuki/gocover-cobertura
