@@ -303,6 +303,9 @@ verify:
     # Download the dependencies in case there was no cache hit, otherwise
     # golang-ci lint will timeout downloading them.
     - go mod download
+    # Prune existing Protobuf definitions for Go and Ruby to ensure we can
+    # indeed roundtrip generated code.
+    - rm -rf proto/go ruby/proto/gitaly/
     - make -j$(nproc) verify
   artifacts:
     paths:
