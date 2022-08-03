@@ -373,7 +373,7 @@ export GITALY_TESTING_GIT_BINARY ?= ${GIT_PREFIX}/bin/git
 endif
 
 .PHONY: prepare-tests
-prepare-tests: libgit2 prepare-test-repos ${SOURCE_DIR}/.ruby-bundle ${GOTESTSUM}
+prepare-tests: libgit2 prepare-test-repos ${SOURCE_DIR}/.ruby-bundle ${GOTESTSUM} ${GITALY_PROTO_TEST_CODE}
 ifndef UNPRIVILEGED_CI_SKIP
 prepare-tests: ${GITALY_PACKED_EXECUTABLES}
 endif
@@ -509,7 +509,7 @@ proto-ruby: ${SOURCE_DIR}/.ruby-bundle
 	${SOURCE_DIR}/_support/generate-proto-ruby
 
 .PHONY: check-proto
-check-proto: proto no-proto-changes lint-proto
+check-proto: no-proto-changes lint-proto
 
 .PHONY: lint-proto
 lint-proto: ${PROTOC} ${PROTOLINT} ${PROTOC_GEN_GITALY_LINT}
@@ -521,7 +521,7 @@ no-changes:
 	${Q}${GIT} diff --exit-code
 
 .PHONY: no-proto-changes
-no-proto-changes: | ${BUILD_DIR}
+no-proto-changes: proto-ruby ${GITALY_PROTO_GO_CODE} ${GITALY_PROTO_TEST_CODE}
 	${Q}${GIT} diff --exit-code -- '*.pb.go' 'ruby/proto/gitaly'
 
 .PHONY: dump-database-schema
@@ -626,7 +626,7 @@ ${BUILD_DIR}/intermediate/gitaly:            remove-legacy-go-mod ${GITALY_PACKE
 ${BUILD_DIR}/intermediate/praefect:          GO_BUILD_TAGS = ${SERVER_BUILD_TAGS}
 ${BUILD_DIR}/intermediate/gitaly-git2go:     GO_BUILD_TAGS = ${GIT2GO_BUILD_TAGS}
 ${BUILD_DIR}/intermediate/gitaly-git2go:     libgit2
-${BUILD_DIR}/intermediate/%:                 clear-go-build-cache-if-needed .FORCE
+${BUILD_DIR}/intermediate/%:                 clear-go-build-cache-if-needed .FORCE ${GITALY_PROTO_GO_CODE}
 	@ # We're building intermediate binaries first which contain a fixed build ID
 	@ # of "TEMP_GITALY_BUILD_ID". In the final binary we replace this build ID with
 	@ # the computed build ID for this binary.
@@ -702,7 +702,7 @@ ${PROTOC}: ${DEPENDENCY_DIR}/protoc.version | ${TOOLS_DIR}
 ${TOOLS_DIR}/%: ${TOOLS_DIR}/%.version
 	${Q}GOBIN=${TOOLS_DIR} go install ${TOOL_PACKAGE}@${TOOL_VERSION}
 
-${PROTOC_GEN_GITALY_LINT}: proto | ${TOOLS_DIR}
+${PROTOC_GEN_GITALY_LINT}: ${GITALY_PROTO_GO_CODE} | ${TOOLS_DIR}
 	${Q}go build -o $@ ${SOURCE_DIR}/tools/protoc-gen-gitaly-lint
 
 ${PROTOC_GEN_GITALY_PROTOLIST}: | ${TOOLS_DIR}
