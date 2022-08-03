@@ -260,6 +260,12 @@ GITALY_INSTALLED_EXECUTABLES = $(filter-out ${GITALY_PACKED_EXECUTABLES}, ${GITA
 # Find all Go source files.
 find_go_sources              = $(shell find ${SOURCE_DIR} -type d \( -name ruby -o -name vendor -o -name testdata -o -name '_*' -o -path '*/proto/go/gitalypb' \) -prune -o -type f -name '*.go' -not -name '*.pb.go' -print | sort -u)
 
+GITALY_PROTOC_OPTS            := --plugin=${PROTOC_GEN_GO} --plugin=${PROTOC_GEN_GO_GRPC} --plugin=${PROTOC_GEN_GITALY_PROTOLIST} --go_opt=paths=source_relative --go-grpc_opt=paths=source_relative
+GITALY_PROTO_DEFINITIONS      := $(wildcard ${SOURCE_DIR}/proto/*.proto)
+GITALY_PROTO_GO_CODE          := ${SOURCE_DIR}/proto/go/gitalypb/protolist.go $(patsubst ${SOURCE_DIR}/proto/%.proto,${SOURCE_DIR}/proto/go/gitalypb/%.pb.go,${GITALY_PROTO_DEFINITIONS})
+GITALY_PROTO_TEST_DEFINITIONS := $(shell find ${SOURCE_DIR}/internal/ ${SOURCE_DIR}/tools -type f -name '*.proto')
+GITALY_PROTO_TEST_CODE        := $(patsubst ${SOURCE_DIR}/%.proto,${SOURCE_DIR}/%.pb.go,${GITALY_PROTO_TEST_DEFINITIONS})
+
 # run_go_tests will execute Go tests with all required parameters. Its
 # behaviour can be modified via the following variables:
 #
@@ -494,27 +500,20 @@ cover: prepare-tests libgit2 ${GOCOVER_COBERTURA}
 	${Q}go tool cover -func "${TEST_COVERAGE_DIR}/all.merged"
 
 .PHONY: proto
-## Regenerate protobuf definitions.
-proto: SHARED_PROTOC_OPTS = --plugin=${PROTOC_GEN_GO} --plugin=${PROTOC_GEN_GO_GRPC} --plugin=${PROTOC_GEN_GITALY_PROTOLIST} --go_opt=paths=source_relative --go-grpc_opt=paths=source_relative
-proto: ${PROTOC} ${PROTOC_GEN_GO} ${PROTOC_GEN_GO_GRPC} ${PROTOC_GEN_GITALY_PROTOLIST} ${SOURCE_DIR}/.ruby-bundle
-	${Q}mkdir -p ${SOURCE_DIR}/proto/go/gitalypb
-	${Q}rm -f ${SOURCE_DIR}/proto/go/gitalypb/*.pb.go
-	${PROTOC} ${SHARED_PROTOC_OPTS} -I ${SOURCE_DIR}/proto -I ${PROTOC_INSTALL_DIR}/include --go_out=${SOURCE_DIR}/proto/go/gitalypb --gitaly-protolist_out=proto_dir=${SOURCE_DIR}/proto,gitalypb_dir=${SOURCE_DIR}/proto/go/gitalypb:${SOURCE_DIR} --go-grpc_out=${SOURCE_DIR}/proto/go/gitalypb ${SOURCE_DIR}/proto/*.proto
+## Regenerate Protobuf definitions.
+proto: proto-ruby ${GITALY_PROTO_GO_CODE} ${GITALY_PROTO_TEST_CODE}
+
+.PHONY: proto-ruby
+## Regenerate Ruby's Protobuf definitions.
+proto-ruby: ${SOURCE_DIR}/.ruby-bundle
 	${SOURCE_DIR}/_support/generate-proto-ruby
-	@ # this part is related to the generation of sources from testing proto files
-	${PROTOC} ${SHARED_PROTOC_OPTS} -I ${SOURCE_DIR}/proto -I ${SOURCE_DIR}/internal -I ${PROTOC_INSTALL_DIR}/include --go_out=${SOURCE_DIR}/internal --go-grpc_out=${SOURCE_DIR}/internal \
-		${SOURCE_DIR}/internal/praefect/mock/mock.proto \
-		${SOURCE_DIR}/internal/middleware/cache/testdata/stream.proto \
-		${SOURCE_DIR}/internal/helper/chunk/testdata/test.proto \
-		${SOURCE_DIR}/internal/middleware/limithandler/testdata/test.proto
-	${PROTOC} ${SHARED_PROTOC_OPTS} -I ${SOURCE_DIR}/proto -I ${SOURCE_DIR}/tools -I ${PROTOC_INSTALL_DIR}/include --go_out=${SOURCE_DIR}/tools --go-grpc_out=${SOURCE_DIR}/tools ${SOURCE_DIR}/tools/protoc-gen-gitaly-lint/testdata/*.proto
 
 .PHONY: check-proto
 check-proto: proto no-proto-changes lint-proto
 
 .PHONY: lint-proto
 lint-proto: ${PROTOC} ${PROTOLINT} ${PROTOC_GEN_GITALY_LINT}
-	${Q}${PROTOC} -I ${SOURCE_DIR}/proto -I ${PROTOC_INSTALL_DIR}/include --plugin=${PROTOC_GEN_GITALY_LINT} --gitaly-lint_out=${SOURCE_DIR} ${SOURCE_DIR}/proto/*.proto
+	${Q}${PROTOC} -I ${SOURCE_DIR}/proto -I ${PROTOC_INSTALL_DIR}/include --plugin=${PROTOC_GEN_GITALY_LINT} --gitaly-lint_out=${SOURCE_DIR} ${GITALY_PROTO_DEFINITIONS}
 	${Q}${PROTOLINT} lint -config_dir_path=${SOURCE_DIR}/proto ${SOURCE_DIR}/proto
 
 .PHONY: no-changes
@@ -566,6 +565,8 @@ ${TOOLS_DIR}: | ${BUILD_DIR}
 	${Q}mkdir -p ${TOOLS_DIR}
 ${DEPENDENCY_DIR}: | ${BUILD_DIR}
 	${Q}mkdir -p ${DEPENDENCY_DIR}
+${SOURCE_DIR}/proto/go/gitalypb:
+	${Q}mkdir -p $@
 
 # This target builds a full Git distribution and installs it into GIT_PREFIX.
 ${GIT_PREFIX}/bin/git: ${DEPENDENCY_DIR}/git-distribution/Makefile
@@ -706,6 +707,15 @@ ${PROTOC_GEN_GITALY_LINT}: proto | ${TOOLS_DIR}
 
 ${PROTOC_GEN_GITALY_PROTOLIST}: | ${TOOLS_DIR}
 	${Q}go build -o $@ ${SOURCE_DIR}/tools/protoc-gen-gitaly-protolist
+
+# Generation of Go sources from our Protobuf definitions.
+${SOURCE_DIR}/proto/go/gitalypb/protolist.go: ${GITALY_PROTO_DEFINITIONS} ${PROTOC} ${PROTOC_GEN_GITALY_PROTOLIST} | ${SOURCE_DIR}/proto/go/gitalypb
+	${PROTOC} ${GITALY_PROTOC_OPTS} -I ${PROTOC_INSTALL_DIR}/include -I ${SOURCE_DIR}/proto --gitaly-protolist_out=proto_dir=${SOURCE_DIR}/proto,gitalypb_dir=$(dir $@):${SOURCE_DIR} ${GITALY_PROTO_DEFINITIONS}
+${SOURCE_DIR}/proto/go/gitalypb/%.pb.go: ${SOURCE_DIR}/proto/%.proto ${PROTOC} ${PROTOC_GEN_GO} ${PROTOC_GEN_GO_GRPC} | ${SOURCE_DIR}/proto/go/gitalypb
+	${Q}${PROTOC} ${GITALY_PROTOC_OPTS} -I ${PROTOC_INSTALL_DIR}/include -I ${SOURCE_DIR}/proto --go_out=$(dir $@) --go-grpc_out=$(dir $@) $<
+# Generation of Go sources required by our tests.
+${SOURCE_DIR}/%.pb.go: ${SOURCE_DIR}/%.proto ${PROTOC} ${PROTOC_GEN_GO} ${PROTOC_GEN_GO_GRPC}
+	${Q}${PROTOC} ${GITALY_PROTOC_OPTS} -I ${PROTOC_INSTALL_DIR}/include -I ${SOURCE_DIR}/proto -I ${SOURCE_DIR}/internal --go_out=${SOURCE_DIR}/internal --go-grpc_out=${SOURCE_DIR}/internal $<
 
 # External tools
 ${GOCOVER_COBERTURA}: TOOL_PACKAGE = github.com/t-yuki/gocover-cobertura
