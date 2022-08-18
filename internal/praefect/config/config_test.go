@@ -294,7 +294,6 @@ func TestConfigParsing(t *testing.T) {
 					ScrapeTimeout:      duration.Duration(time.Second),
 					GRPCLatencyBuckets: []float64{0.1, 0.2, 0.3},
 				},
-				PrometheusExcludeDatabaseFromDefaultMetrics: true,
 				DB: DB{
 					Host:        "1.2.3.4",
 					Port:        5432,
@@ -353,8 +352,7 @@ func TestConfigParsing(t *testing.T) {
 					SchedulingInterval: 0,
 					HistogramBuckets:   []float64{1, 2, 3, 4, 5},
 				},
-				Prometheus: prometheus.DefaultConfig(),
-				PrometheusExcludeDatabaseFromDefaultMetrics: true,
+				Prometheus:  prometheus.DefaultConfig(),
 				Replication: Replication{BatchSize: 1, ParallelStorageProcessingWorkers: 2},
 				Failover: Failover{
 					Enabled:           false,
@@ -376,9 +374,8 @@ func TestConfigParsing(t *testing.T) {
 			expected: Config{
 				GracefulStopTimeout: duration.Duration(time.Minute),
 				Prometheus:          prometheus.DefaultConfig(),
-				PrometheusExcludeDatabaseFromDefaultMetrics: true,
-				Reconciliation: DefaultReconciliationConfig(),
-				Replication:    DefaultReplicationConfig(),
+				Reconciliation:      DefaultReconciliationConfig(),
+				Replication:         DefaultReplicationConfig(),
 				Failover: Failover{
 					Enabled:           true,
 					ElectionStrategy:  ElectionStrategyPerRepository,
