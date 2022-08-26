@@ -97,6 +97,7 @@ SOFTWARE.`,
 				expectedLicenseGo: &gitalypb.FindLicenseResponse{
 					LicenseShortName: "other",
 					LicenseName:      "Other",
+					LicenseNickname:  "LICENSE",
 					LicensePath:      "LICENSE.md",
 				},
 			},
