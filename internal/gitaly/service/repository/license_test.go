@@ -94,6 +94,11 @@ SOFTWARE.`,
 					LicenseName:      "Other",
 					LicensePath:      "LICENSE.md",
 				},
+				expectedLicenseGo: &gitalypb.FindLicenseResponse{
+					LicenseShortName: "other",
+					LicenseName:      "Other",
+					LicensePath:      "LICENSE.md",
+				},
 			},
 			{
 				desc: "deprecated license",
