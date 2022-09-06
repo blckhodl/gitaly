@@ -115,7 +115,7 @@ func TestRepackIncrementalFailure(t *testing.T) {
 		{
 			desc: "nil repo",
 			repo: nil,
-			err:  status.Error(codes.InvalidArgument, gitalyOrPraefect("empty repository", "repo scoped: empty Repository")),
+			err:  status.Error(codes.InvalidArgument, gitalyOrPraefect("empty Repository", "repo scoped: empty Repository")),
 		},
 		{
 			desc: "invalid storage name",

@@ -372,8 +372,8 @@ func TestUserMergeBranch_abort(t *testing.T) {
 		closeSend bool
 		desc      string
 	}{
-		{req: &gitalypb.UserMergeBranchRequest{}, desc: "empty request, don't close"},
-		{req: &gitalypb.UserMergeBranchRequest{}, closeSend: true, desc: "empty request and close"},
+		{req: &gitalypb.UserMergeBranchRequest{Repository: &gitalypb.Repository{}}, desc: "empty request, don't close"},
+		{req: &gitalypb.UserMergeBranchRequest{Repository: &gitalypb.Repository{}}, closeSend: true, desc: "empty request and close"},
 		{closeSend: true, desc: "no request just close"},
 	}
 

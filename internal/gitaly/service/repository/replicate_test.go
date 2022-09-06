@@ -323,7 +323,7 @@ func TestReplicateRepositoryInvalidArguments(t *testing.T) {
 					RelativePath: "/ab/cd/abcdef1234",
 				},
 			},
-			expectedError: "repository cannot be empty",
+			expectedError: "empty Repository",
 		},
 		{
 			description: "empty source",
@@ -334,7 +334,7 @@ func TestReplicateRepositoryInvalidArguments(t *testing.T) {
 				},
 				Source: nil,
 			},
-			expectedError: "repository cannot be empty",
+			expectedError: "empty Repository",
 		},
 		{
 			description: "source and repository have different relative paths",

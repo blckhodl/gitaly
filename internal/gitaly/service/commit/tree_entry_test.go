@@ -177,7 +177,7 @@ func TestFailedTreeEntry(t *testing.T) {
 			name: "Repository is nil",
 			req:  &gitalypb.TreeEntryRequest{Repository: nil, Revision: revision, Path: path},
 			expectedErr: helper.ErrInvalidArgumentf(gitalyOrPraefect(
-				"GetStorageByName: no such storage: \"\"",
+				"TreeEntry: empty Repository",
 				"repo scoped: empty Repository",
 			)),
 		},

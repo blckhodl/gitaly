@@ -674,7 +674,7 @@ func TestGetTreeEntries_validation(t *testing.T) {
 				Path:       path,
 			},
 			expectedErr: helper.ErrInvalidArgumentf(gitalyOrPraefect(
-				"GetStorageByName: no such storage: \"\"",
+				"TreeEntry: empty Repository",
 				"repo scoped: empty Repository",
 			)),
 		},

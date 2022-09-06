@@ -635,7 +635,7 @@ func testEmptyFindLocalBranchesRequest(t *testing.T, ctx context.Context) {
 
 	testhelper.RequireGrpcError(t,
 		helper.ErrInvalidArgumentf(gitalyOrPraefect(
-			"GetStorageByName: no such storage: \"\"",
+			"empty Repository",
 			"repo scoped: empty Repository",
 		)),
 		recvError,
@@ -790,7 +790,7 @@ func TestInvalidFindAllBranchesRequest(t *testing.T) {
 			description: "Empty request",
 			request:     &gitalypb.FindAllBranchesRequest{},
 			expectedErr: helper.ErrInvalidArgumentf(gitalyOrPraefect(
-				"GetStorageByName: no such storage: \"\"",
+				"empty Repository",
 				"repo scoped: empty Repository",
 			)),
 		},

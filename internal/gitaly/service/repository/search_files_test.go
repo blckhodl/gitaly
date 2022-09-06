@@ -239,11 +239,13 @@ func TestSearchFilesByContentFailure(t *testing.T) {
 	}{
 		{
 			desc: "empty request",
+			repo: &gitalypb.Repository{},
 			code: codes.InvalidArgument,
 			msg:  "no query given",
 		},
 		{
 			desc:  "only query given",
+			repo:  &gitalypb.Repository{},
 			query: "foo",
 			code:  codes.InvalidArgument,
 			msg:   "no ref given",
@@ -474,11 +476,13 @@ func TestSearchFilesByNameFailure(t *testing.T) {
 	}{
 		{
 			desc: "empty request",
+			repo: &gitalypb.Repository{},
 			code: codes.InvalidArgument,
 			msg:  "no query given",
 		},
 		{
 			desc:  "only query given",
+			repo:  &gitalypb.Repository{},
 			query: "foo",
 			code:  codes.InvalidArgument,
 			msg:   "no ref given",
@@ -492,6 +496,7 @@ func TestSearchFilesByNameFailure(t *testing.T) {
 		},
 		{
 			desc:   "invalid filter",
+			repo:   &gitalypb.Repository{},
 			query:  "foo",
 			ref:    "master",
 			filter: "+*.",
@@ -500,6 +505,7 @@ func TestSearchFilesByNameFailure(t *testing.T) {
 		},
 		{
 			desc:   "filter longer than max",
+			repo:   &gitalypb.Repository{},
 			query:  "foo",
 			ref:    "master",
 			filter: strings.Repeat(".", searchFilesFilterMaxLength+1),

@@ -709,7 +709,7 @@ func TestFailedValidationUserApplyPatch(t *testing.T) {
 	}{
 		{
 			desc:         "missing Repository",
-			errorMessage: "missing Repository",
+			errorMessage: "empty Repository",
 			branchName:   "new-branch",
 			user:         gittest.TestUser,
 		},
