@@ -34,7 +34,7 @@ type ObjectReader interface {
 // have been queued up such that all requested objects will be readable.
 type ObjectQueue interface {
 	// RequestRevision requests the given revision from git-cat-file(1).
-	RequestRevision(git.Revision) error
+	RequestRevision(batchCommand, git.Revision) error
 	// ReadObject reads an object which has previously been requested.
 	ReadObject() (*Object, error)
 	// Flush flushes all queued requests and asks git-cat-file(1) to print all objects which
@@ -63,7 +63,7 @@ func newObjectReader(
 		git.SubCmd{
 			Name: "cat-file",
 			Flags: []git.Option{
-				git.Flag{Name: "--batch"},
+				git.Flag{Name: "--batch-command"},
 				git.Flag{Name: "--buffer"},
 			},
 		},
@@ -126,7 +126,7 @@ func (o *objectReader) Object(ctx context.Context, revision git.Revision) (*Obje
 	}
 	defer finish()
 
-	if err := queue.RequestRevision(revision); err != nil {
+	if err := queue.RequestRevision(ContentsCommand, revision); err != nil {
 		return nil, err
 	}
 

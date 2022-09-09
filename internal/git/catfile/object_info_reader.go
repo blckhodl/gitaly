@@ -52,7 +52,6 @@ func IsNotFound(err error) bool {
 // ParseObjectInfo reads from a reader and parses the data into an ObjectInfo struct with the given
 // object hash.
 func ParseObjectInfo(objectHash git.ObjectHash, stdout *bufio.Reader) (*ObjectInfo, error) {
-restart:
 	infoLine, err := stdout.ReadString('\n')
 	if err != nil {
 		return nil, fmt.Errorf("read info line: %w", err)
@@ -60,14 +59,6 @@ restart:
 
 	infoLine = strings.TrimSuffix(infoLine, "\n")
 	if strings.HasSuffix(infoLine, " missing") {
-		// We use a hack to flush stdout of git-cat-file(1), which is that we request an
-		// object that cannot exist. This causes Git to write an error and immediately flush
-		// stdout. The only downside is that we need to filter this error here, but that's
-		// acceptable while git-cat-file(1) doesn't yet have any way to natively flush.
-		if strings.HasPrefix(infoLine, flushCommand) {
-			goto restart
-		}
-
 		return nil, NotFoundError{fmt.Errorf("object not found")}
 	}
 
@@ -114,7 +105,7 @@ type ObjectInfoReader interface {
 // all requests have been queued up such that all requested objects will be readable.
 type ObjectInfoQueue interface {
 	// RequestRevision requests the given revision from git-cat-file(1).
-	RequestRevision(git.Revision) error
+	RequestRevision(batchCommand, git.Revision) error
 	// ReadInfo reads object info which has previously been requested.
 	ReadInfo() (*ObjectInfo, error)
 	// Flush flushes all queued requests and asks git-cat-file(1) to print all objects which
@@ -144,7 +135,7 @@ func newObjectInfoReader(
 		git.SubCmd{
 			Name: "cat-file",
 			Flags: []git.Option{
-				git.Flag{Name: "--batch-check"},
+				git.Flag{Name: "--batch-command"},
 				git.Flag{Name: "--buffer"},
 			},
 		},
@@ -207,7 +198,7 @@ func (o *objectInfoReader) Info(ctx context.Context, revision git.Revision) (*Ob
 	}
 	defer cleanup()
 
-	if err := queue.RequestRevision(revision); err != nil {
+	if err := queue.RequestRevision(InfoCommand, revision); err != nil {
 		return nil, err
 	}
 

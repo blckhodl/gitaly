@@ -88,7 +88,7 @@ func CatfileInfo(
 
 		var i int64
 		for it.Next() {
-			if err := queue.RequestRevision(it.ObjectID().Revision()); err != nil {
+			if err := queue.RequestRevision(catfile.InfoCommand, it.ObjectID().Revision()); err != nil {
 				sendCatfileInfoRequest(ctx, requestChan, catfileInfoRequest{err: err})
 				return
 			}
