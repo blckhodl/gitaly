@@ -494,12 +494,7 @@ func TestExecCommandFactory_config(t *testing.T) {
 		expectedEnv []string
 	}{
 		{
-			desc:        "without support for core.fsync",
-			version:     "2.35.0",
-			expectedEnv: append(commonEnv, "core.fsyncobjectfiles=true"),
-		},
-		{
-			desc:        "with support for core.fsync",
+			desc:        "with core.fsync",
 			version:     "2.36.0",
 			expectedEnv: append(commonEnv, "core.fsync=objects,derived-metadata,reference", "core.fsyncmethod=fsync"),
 		},
@@ -559,14 +554,7 @@ func TestExecCommandFactory_SidecarGitConfiguration(t *testing.T) {
 		expectedConfig []git.ConfigPair
 	}{
 		{
-			desc:    "without support for core.fsync",
-			version: "2.35.0",
-			expectedConfig: append(append(commonHead,
-				git.ConfigPair{Key: "core.fsyncObjectFiles", Value: "true"},
-			), commonTail...),
-		},
-		{
-			desc:    "with support for core.fsync",
+			desc:    "with core.fsync",
 			version: "2.36.0",
 			expectedConfig: append(append(commonHead,
 				git.ConfigPair{Key: "core.fsync", Value: "objects,derived-metadata,reference"},
