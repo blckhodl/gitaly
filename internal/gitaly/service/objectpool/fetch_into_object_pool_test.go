@@ -401,14 +401,7 @@ func testFetchIntoObjectPoolDfConflict(t *testing.T, ctx context.Context) {
 	gittest.Exec(t, cfg, "-C", repoPath, "update-ref", "-d", "refs/heads/branch")
 	gittest.WriteCommit(t, cfg, repoPath, gittest.WithBranch("branch/conflict"))
 
-	gitVersion, err := gittest.NewCommandFactory(t, cfg).GitVersion(ctx)
-	require.NoError(t, err)
-
-	// Due to a bug in old Git versions we may get an unexpected exit status.
 	expectedExitStatus := 254
-	if !gitVersion.FlushesUpdaterefStatus() {
-		expectedExitStatus = 1
-	}
 
 	// Verify that we can still fetch into the object pool regardless of the D/F conflict. While
 	// it is not possible to store both references at the same time due to the conflict, we
