@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus/ctxlogrus"
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/localrepo"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/remoterepo"
@@ -12,12 +13,21 @@ import (
 	"gitlab.com/gitlab-org/gitaly/v15/proto/go/gitalypb"
 )
 
-func (s *server) FetchSourceBranch(ctx context.Context, req *gitalypb.FetchSourceBranchRequest) (*gitalypb.FetchSourceBranchResponse, error) {
-	if err := git.ValidateRevision(req.GetSourceBranch()); err != nil {
-		return nil, helper.ErrInvalidArgument(err)
+func validateFetchSourceBranchRequest(in *gitalypb.FetchSourceBranchRequest) error {
+	if in.GetRepository() == nil {
+		return gitalyerrors.ErrEmptyRepository
 	}
+	if err := git.ValidateRevision(in.GetSourceBranch()); err != nil {
+		return err
+	}
+	if err := git.ValidateRevision(in.GetTargetRef()); err != nil {
+		return err
+	}
+	return nil
+}
 
-	if err := git.ValidateRevision(req.GetTargetRef()); err != nil {
+func (s *server) FetchSourceBranch(ctx context.Context, req *gitalypb.FetchSourceBranchRequest) (*gitalypb.FetchSourceBranchResponse, error) {
+	if err := validateFetchSourceBranchRequest(req); err != nil {
 		return nil, helper.ErrInvalidArgument(err)
 	}
 
@@ -43,7 +53,7 @@ func (s *server) FetchSourceBranch(ctx context.Context, req *gitalypb.FetchSourc
 			if errors.Is(err, git.ErrReferenceNotFound) {
 				return &gitalypb.FetchSourceBranchResponse{Result: false}, nil
 			}
-			return nil, helper.ErrInternal(err)
+			return nil, helper.ErrInternalf("resolve revision on target: %w", err)
 		}
 
 		containsObject = true
@@ -55,7 +65,7 @@ func (s *server) FetchSourceBranch(ctx context.Context, req *gitalypb.FetchSourc
 			if errors.Is(err, git.ErrReferenceNotFound) {
 				return &gitalypb.FetchSourceBranchResponse{Result: false}, nil
 			}
-			return nil, helper.ErrInternal(err)
+			return nil, helper.ErrInternalf("resolve revision on source: %w", err)
 		}
 
 		// Otherwise, if the source is a remote repository, we check
@@ -63,7 +73,7 @@ func (s *server) FetchSourceBranch(ctx context.Context, req *gitalypb.FetchSourc
 		// If so, we can skip the fetch.
 		containsObject, err = targetRepo.HasRevision(ctx, sourceOid.Revision()+"^{commit}")
 		if err != nil {
-			return nil, helper.ErrInternal(err)
+			return nil, helper.ErrInternalf("has revision: %w", err)
 		}
 	}
 
@@ -84,12 +94,12 @@ func (s *server) FetchSourceBranch(ctx context.Context, req *gitalypb.FetchSourc
 				return &gitalypb.FetchSourceBranchResponse{Result: false}, nil
 			}
 
-			return nil, err
+			return nil, helper.ErrInternalf("fetch internal: %w", err)
 		}
 	}
 
 	if err := targetRepo.UpdateRef(ctx, git.ReferenceName(req.GetTargetRef()), sourceOid, ""); err != nil {
-		return nil, err
+		return nil, helper.ErrInternalf("update ref: %w", err)
 	}
 
 	return &gitalypb.FetchSourceBranchResponse{Result: true}, nil

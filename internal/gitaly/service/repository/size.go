@@ -9,6 +9,7 @@ import (
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus/ctxlogrus"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/command"
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/catfile"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/gitpipe"
@@ -17,6 +18,7 @@ import (
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/objectpool"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/gitaly/storage"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/gitaly/transaction"
+	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/metadata/featureflag"
 	"gitlab.com/gitlab-org/gitaly/v15/proto/go/gitalypb"
 )
@@ -32,6 +34,9 @@ import (
 // flag can be enabled to return the alternative repository size calculation
 // instead of the size derived from the disk usage command.
 func (s *server) RepositorySize(ctx context.Context, in *gitalypb.RepositorySizeRequest) (*gitalypb.RepositorySizeResponse, error) {
+	if in.GetRepository() == nil {
+		return nil, helper.ErrInvalidArgument(gitalyerrors.ErrEmptyRepository)
+	}
 	repo := s.localrepo(in.GetRepository())
 
 	path, err := repo.Path()
@@ -47,7 +52,7 @@ func (s *server) RepositorySize(ctx context.Context, in *gitalypb.RepositorySize
 	if featureflag.RevlistForRepoSize.IsEnabled(ctx) {
 		newSizeBytes, err = calculateSizeWithRevlist(ctx, repo)
 		if err != nil {
-			return nil, fmt.Errorf("calculating repository size with git-rev-list: %w", err)
+			return nil, helper.ErrInternalf("calculating repository size with git-rev-list: %w", err)
 		}
 
 		logger.WithField("repo_size_revlist_bytes", newSizeBytes).Info("repository size calculated")
@@ -66,7 +71,7 @@ func (s *server) RepositorySize(ctx context.Context, in *gitalypb.RepositorySize
 			s.housekeepingManager,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("calculating repository size with git-cat-file: %w", err)
+			return nil, helper.ErrInternalf("calculating repository size with git-cat-file: %w", err)
 		}
 
 		logger.WithField("repo_size_catfile_bytes", newSizeBytes).Info("repository size calculated")
@@ -160,6 +165,9 @@ func calculateSizeWithRevlist(ctx context.Context, repo *localrepo.Repo) (int64,
 }
 
 func (s *server) GetObjectDirectorySize(ctx context.Context, in *gitalypb.GetObjectDirectorySizeRequest) (*gitalypb.GetObjectDirectorySizeResponse, error) {
+	if in.GetRepository() == nil {
+		return nil, helper.ErrInvalidArgument(gitalyerrors.ErrEmptyRepository)
+	}
 	repo := s.localrepo(in.GetRepository())
 
 	path, err := repo.ObjectDirectoryPath()

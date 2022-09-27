@@ -25,6 +25,7 @@ import (
 	gitalyhook "gitlab.com/gitlab-org/gitaly/v15/internal/gitaly/hook"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/gitaly/storage"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/gitaly/transaction"
+	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper/text"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/metadata"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/testhelper"
@@ -323,7 +324,7 @@ func TestReplicateRepositoryInvalidArguments(t *testing.T) {
 					RelativePath: "/ab/cd/abcdef1234",
 				},
 			},
-			expectedError: "repository cannot be empty",
+			expectedError: "empty Repository",
 		},
 		{
 			description: "empty source",
@@ -334,7 +335,7 @@ func TestReplicateRepositoryInvalidArguments(t *testing.T) {
 				},
 				Source: nil,
 			},
-			expectedError: "repository cannot be empty",
+			expectedError: "empty Repository",
 		},
 		{
 			description: "source and repository have different relative paths",
@@ -395,7 +396,7 @@ func TestReplicateRepository_BadRepository(t *testing.T) {
 			desc:          "source invalid",
 			invalidSource: true,
 			error: func(tb testing.TB, actual error) {
-				testhelper.RequireGrpcError(tb, ErrInvalidSourceRepository, actual)
+				testhelper.RequireGrpcError(tb, helper.ErrNotFound(ErrInvalidSourceRepository), actual)
 			},
 		},
 		{
@@ -403,7 +404,7 @@ func TestReplicateRepository_BadRepository(t *testing.T) {
 			invalidSource: true,
 			invalidTarget: true,
 			error: func(tb testing.TB, actual error) {
-				testhelper.RequireGrpcError(tb, ErrInvalidSourceRepository, actual)
+				testhelper.RequireGrpcError(tb, helper.ErrNotFound(ErrInvalidSourceRepository), actual)
 			},
 		},
 	} {

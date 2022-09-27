@@ -2,11 +2,13 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
 	"strconv"
 
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/catfile"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/rawdiff"
@@ -18,11 +20,14 @@ import (
 
 func (s *server) GetRawChanges(req *gitalypb.GetRawChangesRequest, stream gitalypb.RepositoryService_GetRawChangesServer) error {
 	ctx := stream.Context()
+	if req.GetRepository() == nil {
+		return helper.ErrInvalidArgument(gitalyerrors.ErrEmptyRepository)
+	}
 	repo := s.localrepo(req.GetRepository())
 
 	objectInfoReader, cancel, err := s.catfileCache.ObjectInfoReader(stream.Context(), repo)
 	if err != nil {
-		return helper.ErrInternal(err)
+		return helper.ErrInternalf("creating object info reader: %w", err)
 	}
 	defer cancel()
 
@@ -31,7 +36,7 @@ func (s *server) GetRawChanges(req *gitalypb.GetRawChangesRequest, stream gitaly
 	}
 
 	if err := s.getRawChanges(stream, repo, objectInfoReader, req.GetFromRevision(), req.GetToRevision()); err != nil {
-		return helper.ErrInternal(err)
+		return helper.ErrInternalf("read raw changes: %w", err)
 	}
 
 	return nil
@@ -70,7 +75,7 @@ func (s *server) getRawChanges(stream gitalypb.RepositoryService_GetRawChangesSe
 		Args:  []string{from, to},
 	})
 	if err != nil {
-		return fmt.Errorf("start git diff: %v", err)
+		return fmt.Errorf("start git diff: %w", err)
 	}
 
 	p := rawdiff.NewParser(diffCmd)
@@ -82,21 +87,21 @@ func (s *server) getRawChanges(stream gitalypb.RepositoryService_GetRawChangesSe
 			break // happy path
 		}
 		if err != nil {
-			return fmt.Errorf("read diff: %v", err)
+			return fmt.Errorf("read diff: %w", err)
 		}
 
 		change, err := changeFromDiff(ctx, objectInfoReader, d)
 		if err != nil {
-			return fmt.Errorf("build change from diff line: %v", err)
+			return fmt.Errorf("build change from diff line: %w", err)
 		}
 
 		if err := chunker.Send(change); err != nil {
-			return fmt.Errorf("send response: %v", err)
+			return fmt.Errorf("send response: %w", err)
 		}
 	}
 
 	if err := diffCmd.Wait(); err != nil {
-		return fmt.Errorf("wait git diff: %v", err)
+		return fmt.Errorf("wait git diff: %w", err)
 	}
 
 	return chunker.Flush()
@@ -155,7 +160,7 @@ func changeFromDiff(ctx context.Context, objectInfoReader catfile.ObjectInfoRead
 	if blobMode != submoduleTreeEntryMode {
 		info, err := objectInfoReader.Info(ctx, git.Revision(shortBlobID))
 		if err != nil {
-			return nil, fmt.Errorf("find %q: %v", shortBlobID, err)
+			return nil, fmt.Errorf("find %q: %w", shortBlobID, err)
 		}
 
 		resp.BlobId = info.Oid.String()
@@ -167,7 +172,7 @@ func changeFromDiff(ctx context.Context, objectInfoReader catfile.ObjectInfoRead
 
 func setOperationAndPaths(d *rawdiff.Diff, resp *gitalypb.GetRawChangesResponse_RawChange) error {
 	if len(d.Status) == 0 {
-		return fmt.Errorf("empty diff status")
+		return errors.New("empty diff status")
 	}
 
 	resp.NewPathBytes = []byte(d.SrcPath)

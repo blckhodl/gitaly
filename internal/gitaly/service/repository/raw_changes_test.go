@@ -185,7 +185,7 @@ func TestGetRawChangesFailures(t *testing.T) {
 				ToRevision:   "913c66a37b4a45b9769037c55c2d238bd0942d2e",
 			},
 			expectedErr: helper.ErrInvalidArgumentf(gitalyOrPraefect(
-				"GetStorageByName: no such storage: \"\"",
+				"empty Repository",
 				"repo scoped: empty Repository",
 			)),
 		},

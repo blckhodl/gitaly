@@ -19,7 +19,6 @@ import (
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/stats"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/v15/proto/go/gitalypb"
-	"google.golang.org/grpc/status"
 )
 
 func (s *server) GarbageCollect(ctx context.Context, in *gitalypb.GarbageCollectRequest) (*gitalypb.GarbageCollectResponse, error) {
@@ -39,7 +38,7 @@ func (s *server) GarbageCollect(ctx context.Context, in *gitalypb.GarbageCollect
 	}
 
 	if err := s.cleanupKeepArounds(ctx, repo); err != nil {
-		return nil, err
+		return nil, helper.ErrInternalf("cleanup keep-arounds: %w", err)
 	}
 
 	// Perform housekeeping to cleanup stale lockfiles that may block GC
@@ -48,7 +47,7 @@ func (s *server) GarbageCollect(ctx context.Context, in *gitalypb.GarbageCollect
 	}
 
 	if err := s.gc(ctx, in); err != nil {
-		return nil, err
+		return nil, helper.ErrInternalf("garbage collect: %w", err)
 	}
 
 	if err := housekeeping.WriteCommitGraph(ctx, repo, housekeeping.WriteCommitGraphConfig{
@@ -76,17 +75,14 @@ func (s *server) gc(ctx context.Context, in *gitalypb.GarbageCollectRequest) err
 	)
 	if err != nil {
 		if git.IsInvalidArgErr(err) {
-			return helper.ErrInvalidArgumentf("GarbageCollect: gitCommand: %v", err)
+			return helper.ErrInvalidArgumentf("gitCommand: %w", err)
 		}
 
-		if _, ok := status.FromError(err); ok {
-			return err
-		}
-		return helper.ErrInternal(fmt.Errorf("GarbageCollect: gitCommand: %v", err))
+		return helper.ErrInternal(fmt.Errorf("gitCommand: %w", err))
 	}
 
 	if err := cmd.Wait(); err != nil {
-		return helper.ErrInternal(fmt.Errorf("GarbageCollect: cmd wait: %v", err))
+		return helper.ErrInternal(fmt.Errorf("cmd wait: %w", err))
 	}
 
 	return nil
@@ -112,7 +108,7 @@ func (s *server) cleanupKeepArounds(ctx context.Context, repo *localrepo.Repo) e
 		return nil
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("list refs/keep-around: %w", err)
 	}
 
 	for _, info := range refInfos {
@@ -128,7 +124,7 @@ func (s *server) cleanupKeepArounds(ctx context.Context, repo *localrepo.Repo) e
 		}
 
 		if err := s.fixRef(ctx, repo, objectInfoReader, path, refName, info.Name()); err != nil {
-			return err
+			return fmt.Errorf("fix ref: %w", err)
 		}
 	}
 

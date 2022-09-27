@@ -7,15 +7,17 @@ import (
 	"encoding/hex"
 	"strings"
 
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
+	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/v15/proto/go/gitalypb"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 func (s *server) CalculateChecksum(ctx context.Context, in *gitalypb.CalculateChecksumRequest) (*gitalypb.CalculateChecksumResponse, error) {
 	repo := in.GetRepository()
-
+	if repo == nil {
+		return nil, helper.ErrInvalidArgument(gitalyerrors.ErrEmptyRepository)
+	}
 	repoPath, err := s.locator.GetRepoPath(repo)
 	if err != nil {
 		return nil, err
@@ -23,11 +25,7 @@ func (s *server) CalculateChecksum(ctx context.Context, in *gitalypb.CalculateCh
 
 	cmd, err := s.gitCmdFactory.New(ctx, repo, git.SubCmd{Name: "show-ref", Flags: []git.Option{git.Flag{Name: "--head"}}})
 	if err != nil {
-		if _, ok := status.FromError(err); ok {
-			return nil, err
-		}
-
-		return nil, status.Errorf(codes.Internal, "CalculateChecksum: gitCommand: %v", err)
+		return nil, helper.ErrInternalf("gitCommand: %w", err)
 	}
 
 	var checksum git.Checksum
@@ -38,7 +36,7 @@ func (s *server) CalculateChecksum(ctx context.Context, in *gitalypb.CalculateCh
 	}
 
 	if err := scanner.Err(); err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, helper.ErrInternal(err)
 	}
 
 	if err := cmd.Wait(); checksum.IsZero() || err != nil {
@@ -46,7 +44,7 @@ func (s *server) CalculateChecksum(ctx context.Context, in *gitalypb.CalculateCh
 			return &gitalypb.CalculateChecksumResponse{Checksum: git.ObjectHashSHA1.ZeroOID.String()}, nil
 		}
 
-		return nil, status.Errorf(codes.DataLoss, "CalculateChecksum: not a git repository '%s'", repoPath)
+		return nil, helper.ErrDataLossf("not a git repository '%s'", repoPath)
 	}
 
 	return &gitalypb.CalculateChecksumResponse{Checksum: hex.EncodeToString(checksum.Bytes())}, nil

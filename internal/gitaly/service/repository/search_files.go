@@ -9,6 +9,7 @@ import (
 	"regexp"
 
 	"gitlab.com/gitlab-org/gitaly/v15/internal/command"
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper/lines"
@@ -31,13 +32,8 @@ func (s *server) SearchFilesByContent(req *gitalypb.SearchFilesByContentRequest,
 		return helper.ErrInvalidArgument(err)
 	}
 
-	repo := req.GetRepository()
-	if repo == nil {
-		return helper.ErrInvalidArgumentf("SearchFilesByContent: empty Repository")
-	}
-
 	ctx := stream.Context()
-	cmd, err := s.gitCmdFactory.New(ctx, repo,
+	cmd, err := s.gitCmdFactory.New(ctx, req.GetRepository(),
 		git.SubCmd{Name: "grep", Flags: []git.Option{
 			git.Flag{Name: "--ignore-case"},
 			git.Flag{Name: "-I"},
@@ -49,11 +45,11 @@ func (s *server) SearchFilesByContent(req *gitalypb.SearchFilesByContentRequest,
 			git.Flag{Name: "-e"},
 		}, Args: []string{req.GetQuery(), string(req.GetRef())}})
 	if err != nil {
-		return helper.ErrInternalf("SearchFilesByContent: cmd start failed: %v", err)
+		return helper.ErrInternalf("cmd start failed: %w", err)
 	}
 
 	if err = sendSearchFilesResultChunked(cmd, stream); err != nil {
-		return helper.ErrInternalf("SearchFilesByContent: sending chunked response failed: %v", err)
+		return helper.ErrInternalf("sending chunked response failed: %w", err)
 	}
 
 	return nil
@@ -109,24 +105,19 @@ func (s *server) SearchFilesByName(req *gitalypb.SearchFilesByNameRequest, strea
 	var filter *regexp.Regexp
 	if req.GetFilter() != "" {
 		if len(req.GetFilter()) > searchFilesFilterMaxLength {
-			return helper.ErrInvalidArgumentf("SearchFilesByName: filter exceeds maximum length")
+			return helper.ErrInvalidArgumentf("filter exceeds maximum length")
 		}
 		var err error
 		filter, err = regexp.Compile(req.GetFilter())
 		if err != nil {
-			return helper.ErrInvalidArgumentf("SearchFilesByName: filter did not compile: %v", err)
+			return helper.ErrInvalidArgumentf("filter did not compile: %w", err)
 		}
-	}
-
-	repo := req.GetRepository()
-	if repo == nil {
-		return helper.ErrInvalidArgumentf("SearchFilesByName: empty Repository")
 	}
 
 	ctx := stream.Context()
 	cmd, err := s.gitCmdFactory.New(
 		ctx,
-		repo,
+		req.GetRepository(),
 		git.SubCmd{Name: "ls-tree", Flags: []git.Option{
 			git.Flag{Name: "--full-tree"},
 			git.Flag{Name: "--name-status"},
@@ -138,7 +129,7 @@ func (s *server) SearchFilesByName(req *gitalypb.SearchFilesByNameRequest, strea
 			git.Flag{Name: "-z"},
 		}, Args: []string{string(req.GetRef()), req.GetQuery()}})
 	if err != nil {
-		return helper.ErrInternalf("SearchFilesByName: cmd start failed: %v", err)
+		return helper.ErrInternalf("cmd start failed: %w", err)
 	}
 
 	lr := func(objs [][]byte) error {
@@ -149,11 +140,16 @@ func (s *server) SearchFilesByName(req *gitalypb.SearchFilesByNameRequest, strea
 }
 
 type searchFilesRequest interface {
+	GetRepository() *gitalypb.Repository
 	GetRef() []byte
 	GetQuery() string
 }
 
 func validateSearchFilesRequest(req searchFilesRequest) error {
+	if req.GetRepository() == nil {
+		return gitalyerrors.ErrEmptyRepository
+	}
+
 	if len(req.GetQuery()) == 0 {
 		return errors.New("no query given")
 	}

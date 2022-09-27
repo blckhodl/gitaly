@@ -5,11 +5,10 @@ import (
 	"os"
 	"path/filepath"
 
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/v15/proto/go/gitalypb"
 	"gitlab.com/gitlab-org/gitaly/v15/streamio"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // GetConfig reads the repository's gitconfig file and returns its contents.
@@ -17,6 +16,9 @@ func (s *server) GetConfig(
 	request *gitalypb.GetConfigRequest,
 	stream gitalypb.RepositoryService_GetConfigServer,
 ) error {
+	if request.GetRepository() == nil {
+		return helper.ErrInvalidArgument(gitalyerrors.ErrEmptyRepository)
+	}
 	repoPath, err := s.locator.GetPath(request.GetRepository())
 	if err != nil {
 		return err
@@ -27,9 +29,9 @@ func (s *server) GetConfig(
 	gitconfig, err := os.Open(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return status.Errorf(codes.NotFound, "opening gitconfig: %v", err)
+			return helper.ErrNotFoundf("opening gitconfig: %w", err)
 		}
-		return helper.ErrInternalf("opening gitconfig: %v", err)
+		return helper.ErrInternalf("opening gitconfig: %w", err)
 	}
 
 	writer := streamio.NewWriter(func(p []byte) error {
@@ -39,7 +41,7 @@ func (s *server) GetConfig(
 	})
 
 	if _, err := io.Copy(writer, gitconfig); err != nil {
-		return helper.ErrInternalf("sending config: %v", err)
+		return helper.ErrInternalf("sending config: %w", err)
 	}
 
 	return nil

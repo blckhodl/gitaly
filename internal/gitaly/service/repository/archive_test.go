@@ -381,7 +381,7 @@ func TestGetArchive_inputValidation(t *testing.T) {
 			prefix:    "my-prefix",
 			elidePath: true,
 			path:      []byte("files/html/500.html"),
-			code:      codes.Unknown,
+			code:      codes.Internal,
 		},
 	}
 
