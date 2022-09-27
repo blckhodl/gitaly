@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/gitpipe"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/v15/proto/go/gitalypb"
@@ -42,7 +43,7 @@ func (s *server) FindRefsByOID(ctx context.Context, in *gitalypb.FindRefsByOIDRe
 		if strings.Contains(err.Error(), "exit status 129") {
 			return nil, helper.ErrInvalidArgument(err)
 		}
-		return nil, err
+		return nil, helper.ErrInternal(err)
 	}
 
 	return &gitalypb.FindRefsByOIDResponse{
@@ -52,7 +53,7 @@ func (s *server) FindRefsByOID(ctx context.Context, in *gitalypb.FindRefsByOIDRe
 
 func validateFindRefsReq(in *gitalypb.FindRefsByOIDRequest) error {
 	if in.GetRepository() == nil {
-		return errors.New("empty Repository")
+		return gitalyerrors.ErrEmptyRepository
 	}
 
 	if in.GetOid() == "" {

@@ -531,7 +531,7 @@ func testFindLocalBranchesPaginationWithIncorrectToken(t *testing.T, ctx context
 
 	_, err = c.Recv()
 	require.NotEqual(t, err, io.EOF)
-	testhelper.RequireGrpcError(t, helper.ErrInternalf("could not find page token"), err)
+	testhelper.RequireGrpcError(t, helper.ErrInternalf("find refs: could not find page token"), err)
 }
 
 // Test that `s` contains the elements in `relativeOrder` in that order
@@ -635,7 +635,7 @@ func testEmptyFindLocalBranchesRequest(t *testing.T, ctx context.Context) {
 
 	testhelper.RequireGrpcError(t,
 		helper.ErrInvalidArgumentf(gitalyOrPraefect(
-			"GetStorageByName: no such storage: \"\"",
+			"empty Repository",
 			"repo scoped: empty Repository",
 		)),
 		recvError,
@@ -790,7 +790,7 @@ func TestInvalidFindAllBranchesRequest(t *testing.T) {
 			description: "Empty request",
 			request:     &gitalypb.FindAllBranchesRequest{},
 			expectedErr: helper.ErrInvalidArgumentf(gitalyOrPraefect(
-				"GetStorageByName: no such storage: \"\"",
+				"empty Repository",
 				"repo scoped: empty Repository",
 			)),
 		},
@@ -803,7 +803,7 @@ func TestInvalidFindAllBranchesRequest(t *testing.T) {
 				},
 			},
 			expectedErr: helper.ErrInvalidArgumentf(gitalyOrPraefect(
-				"GetStorageByName: no such storage: \"fake\"",
+				"creating object reader: GetStorageByName: no such storage: \"fake\"",
 				"repo scoped: invalid Repository",
 			)),
 		},

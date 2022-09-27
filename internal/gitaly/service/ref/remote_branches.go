@@ -1,9 +1,11 @@
 package ref
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/v15/proto/go/gitalypb"
@@ -33,7 +35,7 @@ func (s *server) findAllRemoteBranches(req *gitalypb.FindAllRemoteBranchesReques
 	ctx := stream.Context()
 	objectReader, cancel, err := s.catfileCache.ObjectReader(ctx, repo)
 	if err != nil {
-		return err
+		return fmt.Errorf("creating object reader: %w", err)
 	}
 	defer cancel()
 
@@ -41,16 +43,19 @@ func (s *server) findAllRemoteBranches(req *gitalypb.FindAllRemoteBranchesReques
 	opts.cmdArgs = args
 	writer := newFindAllRemoteBranchesWriter(stream, objectReader)
 
-	return s.findRefs(ctx, writer, repo, patterns, opts)
+	if err = s.findRefs(ctx, writer, repo, patterns, opts); err != nil {
+		return fmt.Errorf("find refs: %w", err)
+	}
+	return nil
 }
 
 func validateFindAllRemoteBranchesRequest(req *gitalypb.FindAllRemoteBranchesRequest) error {
 	if req.GetRepository() == nil {
-		return fmt.Errorf("empty Repository")
+		return gitalyerrors.ErrEmptyRepository
 	}
 
 	if len(req.GetRemoteName()) == 0 {
-		return fmt.Errorf("empty RemoteName")
+		return errors.New("empty RemoteName")
 	}
 
 	return nil

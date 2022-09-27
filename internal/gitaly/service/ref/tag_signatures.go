@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/catfile"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/gitpipe"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
@@ -16,7 +17,7 @@ import (
 
 func verifyGetTagSignaturesRequest(req *gitalypb.GetTagSignaturesRequest) error {
 	if req.GetRepository() == nil {
-		return errors.New("empty repository")
+		return gitalyerrors.ErrEmptyRepository
 	}
 
 	if len(req.GetTagRevisions()) == 0 {
@@ -62,7 +63,7 @@ func (s *server) GetTagSignatures(req *gitalypb.GetTagSignaturesRequest, stream 
 
 	catfileObjectIter, err := gitpipe.CatfileObject(ctx, objectReader, revlistIter)
 	if err != nil {
-		return err
+		return helper.ErrInternalf("crate cat-file object iterator: %w", err)
 	}
 
 	for catfileObjectIter.Next() {
@@ -70,7 +71,7 @@ func (s *server) GetTagSignatures(req *gitalypb.GetTagSignaturesRequest, stream 
 
 		raw, err := io.ReadAll(tag)
 		if err != nil {
-			return helper.ErrInternal(err)
+			return helper.ErrInternalf("read tag: %w", err)
 		}
 
 		signatureKey, tagText := catfile.ExtractTagSignature(raw)
@@ -85,11 +86,11 @@ func (s *server) GetTagSignatures(req *gitalypb.GetTagSignaturesRequest, stream 
 	}
 
 	if err := catfileObjectIter.Err(); err != nil {
-		return helper.ErrInternal(err)
+		return helper.ErrInternalf("cat-file iterator stop: %w", err)
 	}
 
 	if err := chunker.Flush(); err != nil {
-		return helper.ErrInternal(err)
+		return helper.ErrInternalf("flushing chunker: %w", err)
 	}
 
 	return nil
