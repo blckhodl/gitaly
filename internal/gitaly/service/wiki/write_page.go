@@ -1,12 +1,12 @@
 package wiki
 
 import (
-	"fmt"
+	"errors"
 
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/gitaly/rubyserver"
+	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/v15/proto/go/gitalypb"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 func (s *server) WikiWritePage(stream gitalypb.WikiService_WikiWritePageServer) error {
@@ -16,7 +16,7 @@ func (s *server) WikiWritePage(stream gitalypb.WikiService_WikiWritePageServer) 
 	}
 
 	if err := validateWikiWritePageRequest(firstRequest); err != nil {
-		return status.Errorf(codes.InvalidArgument, "WikiWritePage: %v", err)
+		return helper.ErrInvalidArgument(err)
 	}
 
 	ctx := stream.Context()
@@ -61,12 +61,15 @@ func (s *server) WikiWritePage(stream gitalypb.WikiService_WikiWritePageServer) 
 }
 
 func validateWikiWritePageRequest(request *gitalypb.WikiWritePageRequest) error {
+	if request.GetRepository() == nil {
+		return gitalyerrors.ErrEmptyRepository
+	}
 	if len(request.GetName()) == 0 {
-		return fmt.Errorf("empty Name")
+		return errors.New("empty Name")
 	}
 
 	if request.GetFormat() == "" {
-		return fmt.Errorf("empty Format")
+		return errors.New("empty Format")
 	}
 
 	return validateRequestCommitDetails(request)
