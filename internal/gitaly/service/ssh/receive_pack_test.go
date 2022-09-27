@@ -81,7 +81,7 @@ func TestReceivePack_validation(t *testing.T) {
 					return helper.ErrInvalidArgumentf("repo scoped: empty Repository")
 				}
 
-				return helper.ErrInvalidArgumentf("repository is empty")
+				return helper.ErrInvalidArgumentf("empty Repository")
 			}(),
 		},
 		{
@@ -799,7 +799,7 @@ func sshPush(ctx context.Context, t *testing.T, cfg config.Cfg, cloneDetails SSH
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", "", fmt.Errorf("error pushing: %v: %q", err, out)
+		return "", "", fmt.Errorf("error pushing: %w: %q", err, out)
 	}
 
 	if !cmd.ProcessState.Success() {
