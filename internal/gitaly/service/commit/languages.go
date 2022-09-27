@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper/text"
@@ -17,8 +18,18 @@ import (
 
 var errAmbigRef = errors.New("ambiguous reference")
 
-func (s *server) CommitLanguages(ctx context.Context, req *gitalypb.CommitLanguagesRequest) (*gitalypb.CommitLanguagesResponse, error) {
+func (s *server) validateCommitLanguagesRequest(req *gitalypb.CommitLanguagesRequest) error {
+	if req.GetRepository() == nil {
+		return gitalyerrors.ErrEmptyRepository
+	}
 	if err := git.ValidateRevisionAllowEmpty(req.Revision); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *server) CommitLanguages(ctx context.Context, req *gitalypb.CommitLanguagesRequest) (*gitalypb.CommitLanguagesResponse, error) {
+	if err := s.validateCommitLanguagesRequest(req); err != nil {
 		return nil, helper.ErrInvalidArgument(err)
 	}
 
@@ -28,7 +39,7 @@ func (s *server) CommitLanguages(ctx context.Context, req *gitalypb.CommitLangua
 	if revision == "" {
 		defaultBranch, err := repo.GetDefaultBranch(ctx)
 		if err != nil {
-			return nil, err
+			return nil, helper.ErrInternalf("get default branch: %w", err)
 		}
 		revision = defaultBranch.String()
 	}
@@ -114,7 +125,7 @@ func (s *server) checkRevision(ctx context.Context, repo git.RepositoryExecutor,
 
 	if err = revParse.Wait(); err != nil {
 		errMsg := strings.Split(stderr.String(), "\n")[0]
-		return "", fmt.Errorf("%v: %v", err, errMsg)
+		return "", fmt.Errorf("%w: %v", err, errMsg)
 	}
 
 	if strings.HasSuffix(stderr.String(), "refname '"+revision+"' is ambiguous.\n") {

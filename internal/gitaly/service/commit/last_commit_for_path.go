@@ -2,7 +2,9 @@ package commit
 
 import (
 	"context"
+	"fmt"
 
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/log"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
@@ -31,7 +33,7 @@ func (s *server) lastCommitForPath(ctx context.Context, in *gitalypb.LastCommitF
 	repo := s.localrepo(in.GetRepository())
 	objectReader, cancel, err := s.catfileCache.ObjectReader(ctx, repo)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating object reader: %w", err)
 	}
 	defer cancel()
 
@@ -57,8 +59,11 @@ func (s *server) lastCommitForPath(ctx context.Context, in *gitalypb.LastCommitF
 }
 
 func validateLastCommitForPathRequest(in *gitalypb.LastCommitForPathRequest) error {
+	if in.GetRepository() == nil {
+		return gitalyerrors.ErrEmptyRepository
+	}
 	if err := git.ValidateRevision(in.Revision); err != nil {
-		return helper.ErrInvalidArgument(err)
+		return err
 	}
 	return nil
 }

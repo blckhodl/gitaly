@@ -530,7 +530,7 @@ func TestGetTreeEntries_unsuccessful(t *testing.T) {
 			revision:      []byte(commitID),
 			path:          []byte("."),
 			pageToken:     "non-existent",
-			expectedError: status.Error(codes.Unknown, "could not find starting OID: non-existent"),
+			expectedError: status.Error(codes.Internal, "could not find starting OID: non-existent"),
 		},
 	}
 
@@ -662,7 +662,7 @@ func TestGetTreeEntries_validation(t *testing.T) {
 				Path:       path,
 			},
 			expectedErr: helper.ErrInvalidArgumentf(gitalyOrPraefect(
-				"GetStorageByName: no such storage: \"fake\"",
+				"creating object reader: GetStorageByName: no such storage: \"fake\"",
 				"repo scoped: invalid Repository",
 			)),
 		},
@@ -674,7 +674,7 @@ func TestGetTreeEntries_validation(t *testing.T) {
 				Path:       path,
 			},
 			expectedErr: helper.ErrInvalidArgumentf(gitalyOrPraefect(
-				"GetStorageByName: no such storage: \"\"",
+				"empty Repository",
 				"repo scoped: empty Repository",
 			)),
 		},
@@ -685,7 +685,7 @@ func TestGetTreeEntries_validation(t *testing.T) {
 				Revision:   nil,
 				Path:       path,
 			},
-			expectedErr: helper.ErrInvalidArgumentf("TreeEntry: empty revision"),
+			expectedErr: helper.ErrInvalidArgumentf("empty revision"),
 		},
 		{
 			desc: "path is empty",
@@ -693,7 +693,7 @@ func TestGetTreeEntries_validation(t *testing.T) {
 				Repository: repo,
 				Revision:   revision,
 			},
-			expectedErr: helper.ErrInvalidArgumentf("TreeEntry: empty Path"),
+			expectedErr: helper.ErrInvalidArgumentf("empty Path"),
 		},
 		{
 			desc: "revision is invalid",
@@ -702,7 +702,7 @@ func TestGetTreeEntries_validation(t *testing.T) {
 				Revision:   []byte("--output=/meow"),
 				Path:       path,
 			},
-			expectedErr: helper.ErrInvalidArgumentf("TreeEntry: revision can't start with '-'"),
+			expectedErr: helper.ErrInvalidArgumentf("revision can't start with '-'"),
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {

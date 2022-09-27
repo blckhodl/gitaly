@@ -2,9 +2,10 @@ package commit
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"io"
 
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/catfile"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
@@ -28,8 +29,8 @@ func (s *server) FilterShasWithSignatures(bidi gitalypb.CommitService_FilterShas
 }
 
 func validateFirstFilterShasWithSignaturesRequest(in *gitalypb.FilterShasWithSignaturesRequest) error {
-	if in.Repository == nil {
-		return errors.New("no repository given")
+	if in.GetRepository() == nil {
+		return gitalyerrors.ErrEmptyRepository
 	}
 	return nil
 }
@@ -40,7 +41,7 @@ func (s *server) filterShasWithSignatures(bidi gitalypb.CommitService_FilterShas
 
 	objectReader, cancel, err := s.catfileCache.ObjectReader(ctx, repo)
 	if err != nil {
-		return err
+		return fmt.Errorf("creating object reader: %w", err)
 	}
 	defer cancel()
 

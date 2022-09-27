@@ -1,6 +1,7 @@
 package commit
 
 import (
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/catfile"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
@@ -11,11 +12,14 @@ import (
 
 func (s *server) ListCommitsByRefName(in *gitalypb.ListCommitsByRefNameRequest, stream gitalypb.CommitService_ListCommitsByRefNameServer) error {
 	ctx := stream.Context()
+	if in.GetRepository() == nil {
+		return helper.ErrInvalidArgument(gitalyerrors.ErrEmptyRepository)
+	}
 	repo := s.localrepo(in.GetRepository())
 
 	objectReader, cancel, err := s.catfileCache.ObjectReader(ctx, repo)
 	if err != nil {
-		return helper.ErrInternal(err)
+		return helper.ErrInternalf("creating object reader: %w", err)
 	}
 	defer cancel()
 
@@ -27,7 +31,7 @@ func (s *server) ListCommitsByRefName(in *gitalypb.ListCommitsByRefNameRequest, 
 			continue
 		}
 		if err != nil {
-			return helper.ErrInternal(err)
+			return helper.ErrInternalf("get commit: %w", err)
 		}
 
 		commitByRef := &gitalypb.ListCommitsByRefNameResponse_CommitForRef{

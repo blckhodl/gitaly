@@ -1,10 +1,12 @@
 package commit
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/catfile"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
@@ -23,7 +25,7 @@ func sendTreeEntry(
 
 	treeEntry, err := catfile.NewTreeEntryFinder(objectReader, objectInfoReader).FindByRevisionAndPath(ctx, revision, path)
 	if err != nil {
-		return err
+		return helper.ErrInternal(err)
 	}
 
 	if treeEntry == nil || len(treeEntry.Oid) == 0 {
@@ -37,7 +39,7 @@ func sendTreeEntry(
 			Oid:  treeEntry.Oid,
 		}
 		if err := stream.Send(response); err != nil {
-			return helper.ErrUnavailablef("TreeEntry: send: %v", err)
+			return helper.ErrUnavailablef("send: %w", err)
 		}
 
 		return nil
@@ -46,7 +48,7 @@ func sendTreeEntry(
 	if treeEntry.Type == gitalypb.TreeEntry_TREE {
 		treeInfo, err := objectInfoReader.Info(ctx, git.Revision(treeEntry.Oid))
 		if err != nil {
-			return err
+			return helper.ErrInternalf("read object info: %w", err)
 		}
 
 		response := &gitalypb.TreeEntryResponse{
@@ -60,12 +62,12 @@ func sendTreeEntry(
 
 	objectInfo, err := objectInfoReader.Info(ctx, git.Revision(treeEntry.Oid))
 	if err != nil {
-		return helper.ErrInternalf("TreeEntry: %v", err)
+		return helper.ErrInternalf("read object info: %w", err)
 	}
 
 	if strings.ToLower(treeEntry.Type.String()) != objectInfo.Type {
 		return helper.ErrInternalf(
-			"TreeEntry: mismatched object type: tree-oid=%s object-oid=%s entry-type=%s object-type=%s",
+			"mismatched object type: tree-oid=%s object-oid=%s entry-type=%s object-type=%s",
 			treeEntry.Oid, objectInfo.Oid, treeEntry.Type.String(), objectInfo.Type,
 		)
 	}
@@ -74,7 +76,7 @@ func sendTreeEntry(
 
 	if maxSize > 0 && dataLength > maxSize {
 		return helper.ErrFailedPreconditionf(
-			"TreeEntry: object size (%d) is bigger than the maximum allowed size (%d)",
+			"object size (%d) is bigger than the maximum allowed size (%d)",
 			dataLength, maxSize,
 		)
 	}
@@ -95,17 +97,17 @@ func sendTreeEntry(
 
 	blobObj, err := objectReader.Object(ctx, git.Revision(objectInfo.Oid))
 	if err != nil {
-		return err
+		return helper.ErrInternalf("read object: %w", err)
 	}
 	if blobObj.Type != "blob" {
-		return fmt.Errorf("blob has unexpected type %q", blobObj.Type)
+		return helper.ErrFailedPrecondition(fmt.Errorf("blob has unexpected type %q", blobObj.Type))
 	}
 
 	sw := streamio.NewWriter(func(p []byte) error {
 		response.Data = p
 
 		if err := stream.Send(response); err != nil {
-			return helper.ErrUnavailablef("TreeEntry: send: %v", err)
+			return helper.ErrUnavailablef("send: %w", err)
 		}
 
 		// Use a new response so we don't send other fields (Size, ...) over and over
@@ -120,7 +122,7 @@ func sendTreeEntry(
 
 func (s *server) TreeEntry(in *gitalypb.TreeEntryRequest, stream gitalypb.CommitService_TreeEntryServer) error {
 	if err := validateRequest(in); err != nil {
-		return helper.ErrInvalidArgumentf("TreeEntry: %v", err)
+		return helper.ErrInvalidArgument(err)
 	}
 
 	repo := s.localrepo(in.GetRepository())
@@ -134,13 +136,13 @@ func (s *server) TreeEntry(in *gitalypb.TreeEntryRequest, stream gitalypb.Commit
 
 	objectReader, cancel, err := s.catfileCache.ObjectReader(stream.Context(), repo)
 	if err != nil {
-		return err
+		return helper.ErrInternalf("creating object reader: %w", err)
 	}
 	defer cancel()
 
 	objectInfoReader, cancel, err := s.catfileCache.ObjectInfoReader(stream.Context(), repo)
 	if err != nil {
-		return err
+		return helper.ErrInternalf("creating object info reader: %w", err)
 	}
 	defer cancel()
 
@@ -148,19 +150,22 @@ func (s *server) TreeEntry(in *gitalypb.TreeEntryRequest, stream gitalypb.Commit
 }
 
 func validateRequest(in *gitalypb.TreeEntryRequest) error {
+	if in.GetRepository() == nil {
+		return gitalyerrors.ErrEmptyRepository
+	}
 	if err := git.ValidateRevision(in.Revision); err != nil {
 		return err
 	}
 
 	if len(in.GetPath()) == 0 {
-		return fmt.Errorf("empty Path")
+		return errors.New("empty Path")
 	}
 
 	if in.GetLimit() < 0 {
-		return fmt.Errorf("negative Limit")
+		return errors.New("negative Limit")
 	}
 	if in.GetMaxSize() < 0 {
-		return fmt.Errorf("negative MaxSize")
+		return errors.New("negative MaxSize")
 	}
 
 	return nil

@@ -7,20 +7,19 @@ import (
 	"fmt"
 	"io"
 
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/catfile"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/v15/proto/go/gitalypb"
 	"gitlab.com/gitlab-org/gitaly/v15/streamio"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 var gpgSiganturePrefix = []byte("gpgsig")
 
 func (s *server) GetCommitSignatures(request *gitalypb.GetCommitSignaturesRequest, stream gitalypb.CommitService_GetCommitSignaturesServer) error {
 	if err := validateGetCommitSignaturesRequest(request); err != nil {
-		return status.Errorf(codes.InvalidArgument, "GetCommitSignatures: %v", err)
+		return helper.ErrInvalidArgument(err)
 	}
 
 	return s.getCommitSignatures(request, stream)
@@ -32,7 +31,7 @@ func (s *server) getCommitSignatures(request *gitalypb.GetCommitSignaturesReques
 
 	objectReader, cancel, err := s.catfileCache.ObjectReader(ctx, repo)
 	if err != nil {
-		return helper.ErrInternal(err)
+		return helper.ErrInternalf("creating object reader: %w", err)
 	}
 	defer cancel()
 
@@ -42,7 +41,7 @@ func (s *server) getCommitSignatures(request *gitalypb.GetCommitSignaturesReques
 			if catfile.IsNotFound(err) {
 				continue
 			}
-			return helper.ErrInternal(err)
+			return helper.ErrInternalf("read object: %w", err)
 		}
 
 		signatureKey, commitText, err := extractSignature(commitObj)
@@ -121,7 +120,7 @@ func sendResponse(commitID string, signatureKey []byte, commitText []byte, strea
 
 	_, err = io.Copy(streamWriter, msgReader)
 	if err != nil {
-		return fmt.Errorf("failed to send response: %v", err)
+		return fmt.Errorf("failed to send response: %w", err)
 	}
 
 	return nil
@@ -129,7 +128,7 @@ func sendResponse(commitID string, signatureKey []byte, commitText []byte, strea
 
 func validateGetCommitSignaturesRequest(request *gitalypb.GetCommitSignaturesRequest) error {
 	if request.GetRepository() == nil {
-		return errors.New("empty Repository")
+		return gitalyerrors.ErrEmptyRepository
 	}
 
 	if len(request.GetCommitIds()) == 0 {

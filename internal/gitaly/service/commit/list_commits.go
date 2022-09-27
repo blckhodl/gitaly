@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/catfile"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/gitpipe"
@@ -15,7 +16,7 @@ import (
 
 func verifyListCommitsRequest(request *gitalypb.ListCommitsRequest) error {
 	if request.GetRepository() == nil {
-		return errors.New("empty repository")
+		return gitalyerrors.ErrEmptyRepository
 	}
 	if len(request.GetRevisions()) == 0 {
 		return errors.New("missing revisions")
@@ -41,7 +42,7 @@ func (s *server) ListCommits(
 
 	objectReader, cancel, err := s.catfileCache.ObjectReader(ctx, repo)
 	if err != nil {
-		return helper.ErrInternal(fmt.Errorf("creating object reader: %w", err))
+		return helper.ErrInternalf("creating object reader: %w", err)
 	}
 	defer cancel()
 
@@ -112,7 +113,7 @@ func (s *server) ListCommits(
 
 	catfileObjectIter, err := gitpipe.CatfileObject(ctx, objectReader, revlistIter)
 	if err != nil {
-		return err
+		return helper.ErrInternalf("crate cat-file object iterator: %w", err)
 	}
 
 	chunker := chunk.New(&commitsSender{

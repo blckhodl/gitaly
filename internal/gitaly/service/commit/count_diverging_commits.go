@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/v15/proto/go/gitalypb"
@@ -36,11 +37,11 @@ func (s *server) validateCountDivergingCommitsRequest(req *gitalypb.CountDivergi
 	}
 
 	if req.GetRepository() == nil {
-		return errors.New("repository is empty")
+		return gitalyerrors.ErrEmptyRepository
 	}
 
 	if _, err := s.locator.GetRepoPath(req.GetRepository()); err != nil {
-		return fmt.Errorf("repository not valid: %v", err)
+		return fmt.Errorf("repository not valid: %w", err)
 	}
 
 	return nil
@@ -61,17 +62,17 @@ func buildRevListCountCmd(from, to string, maxCount int) git.SubCmd {
 func (s *server) findLeftRightCount(ctx context.Context, repo *gitalypb.Repository, from, to string, maxCount int) (int32, int32, error) {
 	cmd, err := s.gitCmdFactory.New(ctx, repo, buildRevListCountCmd(from, to, maxCount))
 	if err != nil {
-		return 0, 0, fmt.Errorf("git rev-list cmd: %v", err)
+		return 0, 0, fmt.Errorf("git rev-list cmd: %w", err)
 	}
 
 	var leftCount, rightCount int64
 	countStr, err := io.ReadAll(cmd)
 	if err != nil {
-		return 0, 0, fmt.Errorf("git rev-list error: %v", err)
+		return 0, 0, fmt.Errorf("git rev-list error: %w", err)
 	}
 
 	if err := cmd.Wait(); err != nil {
-		return 0, 0, fmt.Errorf("gi rev-list error: %v", err)
+		return 0, 0, fmt.Errorf("git rev-list error: %w", err)
 	}
 
 	counts := strings.Fields(string(countStr))

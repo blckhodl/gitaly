@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"gitlab.com/gitlab-org/gitaly/v15/internal/command"
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/catfile"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/trailerparser"
@@ -22,10 +23,20 @@ import (
 
 var statsPattern = regexp.MustCompile(`\s(\d+)\sfiles? changed(,\s(\d+)\sinsertions?\(\+\))?(,\s(\d+)\sdeletions?\(-\))?`)
 
+func validateFindCommitsRequest(in *gitalypb.FindCommitsRequest) error {
+	if in.GetRepository() == nil {
+		return gitalyerrors.ErrEmptyRepository
+	}
+	if err := git.ValidateRevisionAllowEmpty(in.GetRevision()); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (s *server) FindCommits(req *gitalypb.FindCommitsRequest, stream gitalypb.CommitService_FindCommitsServer) error {
 	ctx := stream.Context()
 
-	if err := git.ValidateRevisionAllowEmpty(req.Revision); err != nil {
+	if err := validateFindCommitsRequest(req); err != nil {
 		return helper.ErrInvalidArgument(err)
 	}
 
@@ -36,7 +47,7 @@ func (s *server) FindCommits(req *gitalypb.FindCommitsRequest, stream gitalypb.C
 	if revision := req.Revision; len(revision) == 0 && !req.GetAll() {
 		defaultBranch, err := repo.GetDefaultBranch(ctx)
 		if err != nil {
-			return helper.ErrInternal(fmt.Errorf("defaultBranchName: %v", err))
+			return helper.ErrInternalf("get default branch name: %w", err)
 		}
 		req.Revision = []byte(defaultBranch)
 	}
@@ -60,12 +71,12 @@ func (s *server) findCommits(ctx context.Context, req *gitalypb.FindCommitsReque
 
 	logCmd, err := repo.Exec(ctx, getLogCommandSubCmd(req), opts...)
 	if err != nil {
-		return fmt.Errorf("error when creating git log command: %v", err)
+		return fmt.Errorf("error when creating git log command: %w", err)
 	}
 
 	objectReader, cancel, err := s.catfileCache.ObjectReader(ctx, repo)
 	if err != nil {
-		return fmt.Errorf("creating catfile: %v", err)
+		return fmt.Errorf("creating object reader: %w", err)
 	}
 	defer cancel()
 
@@ -85,7 +96,7 @@ func (s *server) findCommits(ctx context.Context, req *gitalypb.FindCommitsReque
 	}
 
 	if err := streamCommits(getCommits, stream, req.GetTrailers(), req.GetIncludeShortstat()); err != nil {
-		return fmt.Errorf("error streaming commits: %v", err)
+		return fmt.Errorf("error streaming commits: %w", err)
 	}
 	return nil
 }
@@ -160,7 +171,7 @@ func (g *GetCommits) Commit(ctx context.Context, trailers, shortStat bool) (*git
 
 	commit, err := catfile.GetCommit(ctx, g.objectReader, git.Revision(revision))
 	if err != nil {
-		return nil, fmt.Errorf("cat-file get commit %q: %v", revision, err)
+		return nil, fmt.Errorf("cat-file get commit %q: %w", revision, err)
 	}
 
 	if trailers && len(revAndTrailers) == 2 {
@@ -200,7 +211,7 @@ func streamCommits(getCommits *GetCommits, stream gitalypb.CommitService_FindCom
 	}
 
 	if getCommits.Err() != nil {
-		return fmt.Errorf("get commits: %v", getCommits.Err())
+		return fmt.Errorf("get commits: %w", getCommits.Err())
 	}
 
 	return chunker.Flush()
