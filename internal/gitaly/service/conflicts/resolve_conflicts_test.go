@@ -680,7 +680,7 @@ func TestFailedResolveConflictsRequestDueToValidation(t *testing.T) {
 				TargetBranch:     targetBranch,
 			},
 			expectedCode: codes.InvalidArgument,
-			expectedErr:  "ResolveConflicts: empty User",
+			expectedErr:  "empty User",
 		},
 		{
 			desc: "empty repo",
@@ -713,7 +713,7 @@ func TestFailedResolveConflictsRequestDueToValidation(t *testing.T) {
 				TargetBranch:     targetBranch,
 			},
 			expectedCode: codes.InvalidArgument,
-			expectedErr:  "ResolveConflicts: empty TargetRepository",
+			expectedErr:  "empty TargetRepository",
 		},
 		{
 			desc: "empty OurCommitId repo",
@@ -728,7 +728,7 @@ func TestFailedResolveConflictsRequestDueToValidation(t *testing.T) {
 				TargetBranch:     targetBranch,
 			},
 			expectedCode: codes.InvalidArgument,
-			expectedErr:  "ResolveConflicts: empty OurCommitOid",
+			expectedErr:  "empty OurCommitOid",
 		},
 		{
 			desc: "empty TheirCommitId repo",
@@ -743,7 +743,7 @@ func TestFailedResolveConflictsRequestDueToValidation(t *testing.T) {
 				TargetBranch:     targetBranch,
 			},
 			expectedCode: codes.InvalidArgument,
-			expectedErr:  "ResolveConflicts: empty TheirCommitOid",
+			expectedErr:  "empty TheirCommitOid",
 		},
 		{
 			desc: "empty CommitMessage repo",
@@ -758,7 +758,7 @@ func TestFailedResolveConflictsRequestDueToValidation(t *testing.T) {
 				TargetBranch:     targetBranch,
 			},
 			expectedCode: codes.InvalidArgument,
-			expectedErr:  "ResolveConflicts: empty CommitMessage",
+			expectedErr:  "empty CommitMessage",
 		},
 		{
 			desc: "empty SourceBranch repo",
@@ -773,7 +773,7 @@ func TestFailedResolveConflictsRequestDueToValidation(t *testing.T) {
 				TargetBranch:     targetBranch,
 			},
 			expectedCode: codes.InvalidArgument,
-			expectedErr:  "ResolveConflicts: empty SourceBranch",
+			expectedErr:  "empty SourceBranch",
 		},
 		{
 			desc: "empty TargetBranch repo",
@@ -788,7 +788,7 @@ func TestFailedResolveConflictsRequestDueToValidation(t *testing.T) {
 				TargetBranch:     nil,
 			},
 			expectedCode: codes.InvalidArgument,
-			expectedErr:  "ResolveConflicts: empty TargetBranch",
+			expectedErr:  "empty TargetBranch",
 		},
 	}
 
