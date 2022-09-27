@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"sync"
 
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/v15/proto/go/gitalypb"
 	"gitlab.com/gitlab-org/gitaly/v15/streamio"
@@ -12,7 +13,7 @@ import (
 
 func validateUpdateHookRequest(in *gitalypb.UpdateHookRequest) error {
 	if in.GetRepository() == nil {
-		return errors.New("repository is empty")
+		return gitalyerrors.ErrEmptyRepository
 	}
 
 	return nil
@@ -56,7 +57,7 @@ func updateHookResponse(stream gitalypb.HookService_UpdateHookServer, code int32
 	if err := stream.Send(&gitalypb.UpdateHookResponse{
 		ExitStatus: &gitalypb.ExitStatus{Value: code},
 	}); err != nil {
-		return helper.ErrInternalf("sending response: %v", err)
+		return helper.ErrInternalf("sending response: %w", err)
 	}
 
 	return nil

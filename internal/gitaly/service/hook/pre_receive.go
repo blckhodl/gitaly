@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"sync"
 
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/v15/proto/go/gitalypb"
 	"gitlab.com/gitlab-org/gitaly/v15/streamio"
@@ -57,7 +58,7 @@ func (s *server) PreReceiveHook(stream gitalypb.HookService_PreReceiveHookServer
 
 func validatePreReceiveHookRequest(in *gitalypb.PreReceiveHookRequest) error {
 	if in.GetRepository() == nil {
-		return errors.New("repository is empty")
+		return gitalyerrors.ErrEmptyRepository
 	}
 
 	return nil
@@ -68,7 +69,7 @@ func preReceiveHookResponse(stream gitalypb.HookService_PreReceiveHookServer, co
 		ExitStatus: &gitalypb.ExitStatus{Value: code},
 		Stderr:     []byte(stderr),
 	}); err != nil {
-		return helper.ErrInternalf("sending response: %v", err)
+		return helper.ErrInternalf("sending response: %w", err)
 	}
 
 	return nil

@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/sirupsen/logrus"
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/pktline"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/gitaly/hook"
@@ -293,7 +294,7 @@ func bufferStdin(r io.Reader, h hash.Hash) (_ io.ReadCloser, err error) {
 
 func (s *server) PackObjectsHookWithSidechannel(ctx context.Context, req *gitalypb.PackObjectsHookWithSidechannelRequest) (*gitalypb.PackObjectsHookWithSidechannelResponse, error) {
 	if req.GetRepository() == nil {
-		return nil, helper.ErrInvalidArgument(errors.New("repository is empty"))
+		return nil, helper.ErrInvalidArgument(gitalyerrors.ErrEmptyRepository)
 	}
 
 	args, err := parsePackObjectsArgs(req.Args)
@@ -303,7 +304,11 @@ func (s *server) PackObjectsHookWithSidechannel(ctx context.Context, req *gitaly
 
 	c, err := hook.GetSidechannel(ctx)
 	if err != nil {
-		return nil, err
+		ptr := &hook.ErrInvalidSidechannelAddress{}
+		if errors.As(err, &ptr) {
+			return nil, helper.ErrInvalidArgument(err)
+		}
+		return nil, helper.ErrInternalf("get side-channel: %w", err)
 	}
 	defer c.Close()
 
@@ -314,11 +319,11 @@ func (s *server) PackObjectsHookWithSidechannel(ctx context.Context, req *gitaly
 			// errors caused by the client disconnecting with the Canceled gRPC code.
 			err = helper.ErrCanceled(err)
 		}
-		return nil, err
+		return nil, helper.ErrInternalf("pack objects hook: %w", err)
 	}
 
 	if err := c.Close(); err != nil {
-		return nil, err
+		return nil, helper.ErrInternalf("close side-channel: %w", err)
 	}
 
 	return &gitalypb.PackObjectsHookWithSidechannelResponse{}, nil
