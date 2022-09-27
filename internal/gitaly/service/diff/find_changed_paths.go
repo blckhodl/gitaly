@@ -10,12 +10,12 @@ import (
 	"strconv"
 	"strings"
 
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/localrepo"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper/chunk"
 	"gitlab.com/gitlab-org/gitaly/v15/proto/go/gitalypb"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -34,7 +34,7 @@ func changedPathsRequestToString(r *gitalypb.FindChangedPathsRequest_Request) (s
 	}
 
 	// This shouldn't happen
-	return "", fmt.Errorf("unknown FindChangedPathsRequest type")
+	return "", errors.New("unknown FindChangedPathsRequest type")
 }
 
 func (s *server) FindChangedPaths(in *gitalypb.FindChangedPathsRequest, stream gitalypb.DiffService_FindChangedPathsServer) error {
@@ -66,18 +66,15 @@ func (s *server) FindChangedPaths(in *gitalypb.FindChangedPathsRequest, stream g
 		},
 	}, git.WithStdin(strings.NewReader(strings.Join(requests, "\n")+"\n")))
 	if err != nil {
-		if _, ok := status.FromError(err); ok {
-			return fmt.Errorf("stdin err: %w", err)
-		}
-		return helper.ErrInternalf("cmd err: %v", err)
+		return helper.ErrInternalf("cmd err: %w", err)
 	}
 
 	if err := parsePaths(bufio.NewReader(cmd), diffChunker); err != nil {
-		return fmt.Errorf("parsing err: %w", err)
+		return helper.ErrInternalf("parsing err: %w", err)
 	}
 
 	if err := cmd.Wait(); err != nil {
-		return helper.ErrUnavailablef("cmd wait err: %v", err)
+		return helper.ErrUnavailablef("cmd wait err: %w", err)
 	}
 
 	return diffChunker.Flush()
@@ -95,7 +92,7 @@ func parsePaths(reader *bufio.Reader, chunker *chunk.Chunker) error {
 		}
 
 		if err := chunker.Send(path); err != nil {
-			return fmt.Errorf("err sending to chunker: %v", err)
+			return fmt.Errorf("err sending to chunker: %w", err)
 		}
 	}
 
@@ -195,6 +192,9 @@ func resolveObjectWithType(ctx context.Context, repo *localrepo.Repo, revision s
 
 func (s *server) validateFindChangedPathsRequestParams(ctx context.Context, in *gitalypb.FindChangedPathsRequest) error {
 	repo := in.GetRepository()
+	if repo == nil {
+		return gitalyerrors.ErrEmptyRepository
+	}
 	if _, err := s.locator.GetRepoPath(repo); err != nil {
 		return err
 	}
