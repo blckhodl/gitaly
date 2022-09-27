@@ -11,6 +11,7 @@ import (
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus/ctxlogrus"
 	"github.com/sirupsen/logrus"
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/localrepo"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/remoterepo"
@@ -19,8 +20,6 @@ import (
 	"gitlab.com/gitlab-org/gitaly/v15/internal/gitaly/storage"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/v15/proto/go/gitalypb"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // UserCommitFiles allows for committing from a set of actions. See the protobuf documentation
@@ -33,11 +32,11 @@ func (s *Server) UserCommitFiles(stream gitalypb.OperationService_UserCommitFile
 
 	header := firstRequest.GetHeader()
 	if header == nil {
-		return status.Errorf(codes.InvalidArgument, "UserCommitFiles: empty UserCommitFilesRequestHeader")
+		return helper.ErrInvalidArgumentf("empty UserCommitFilesRequestHeader")
 	}
 
 	if err = validateUserCommitFilesHeader(header); err != nil {
-		return status.Errorf(codes.InvalidArgument, "UserCommitFiles: %v", err)
+		return helper.ErrInvalidArgument(err)
 	}
 
 	ctx := stream.Context()
@@ -79,7 +78,7 @@ func (s *Server) UserCommitFiles(stream gitalypb.OperationService_UserCommitFile
 		case errors.As(err, new(git2go.InvalidArgumentError)):
 			return helper.ErrInvalidArgument(err)
 		default:
-			return err
+			return helper.ErrInternal(err)
 		}
 
 		ctxlogrus.Extract(ctx).WithError(err).Error("user commit files failed")
@@ -209,12 +208,12 @@ func (s *Server) userCommitFiles(ctx context.Context, header *gitalypb.UserCommi
 	actions := make([]git2go.Action, 0, len(pbActions))
 	for _, pbAction := range pbActions {
 		if _, ok := gitalypb.UserCommitFilesActionHeader_ActionType_name[int32(pbAction.header.Action)]; !ok {
-			return fmt.Errorf("NoMethodError: undefined method `downcase' for %d:Integer", pbAction.header.Action)
+			return helper.ErrInvalidArgumentf("NoMethodError: undefined method `downcase' for %d:Integer", pbAction.header.Action)
 		}
 
 		path, err := validatePath(repoPath, string(pbAction.header.FilePath))
 		if err != nil {
-			return fmt.Errorf("validate path: %w", err)
+			return helper.ErrInvalidArgumentf("validate path: %w", err)
 		}
 
 		content := io.Reader(bytes.NewReader(pbAction.content))
@@ -242,7 +241,7 @@ func (s *Server) userCommitFiles(ctx context.Context, header *gitalypb.UserCommi
 		case gitalypb.UserCommitFilesActionHeader_MOVE:
 			prevPath, err := validatePath(repoPath, string(pbAction.header.PreviousPath))
 			if err != nil {
-				return fmt.Errorf("validate previous path: %w", err)
+				return helper.ErrInvalidArgumentf("validate previous path: %w", err)
 			}
 
 			var oid git.ObjectID
@@ -317,7 +316,7 @@ func (s *Server) userCommitFiles(ctx context.Context, header *gitalypb.UserCommi
 
 	if err := s.updateReferenceWithHooks(ctx, header.GetRepository(), header.User, quarantineDir, targetBranchName, commitID, oldRevision); err != nil {
 		if errors.As(err, &updateref.Error{}) {
-			return status.Errorf(codes.FailedPrecondition, err.Error())
+			return helper.ErrFailedPrecondition(err)
 		}
 
 		return fmt.Errorf("update reference: %w", err)
@@ -420,16 +419,16 @@ func (s *Server) fetchMissingCommit(
 
 func validateUserCommitFilesHeader(header *gitalypb.UserCommitFilesRequestHeader) error {
 	if header.GetRepository() == nil {
-		return fmt.Errorf("empty Repository")
+		return gitalyerrors.ErrEmptyRepository
 	}
 	if header.GetUser() == nil {
-		return fmt.Errorf("empty User")
+		return errors.New("empty User")
 	}
 	if len(header.GetCommitMessage()) == 0 {
-		return fmt.Errorf("empty CommitMessage")
+		return errors.New("empty CommitMessage")
 	}
 	if len(header.GetBranchName()) == 0 {
-		return fmt.Errorf("empty BranchName")
+		return errors.New("empty BranchName")
 	}
 
 	startSha := header.GetStartSha()

@@ -414,9 +414,34 @@ func TestUserRebaseConfirmable_abortViaClose(t *testing.T) {
 		desc      string
 		code      codes.Code
 	}{
-		{req: &gitalypb.UserRebaseConfirmableRequest{}, desc: "empty request, don't close", code: codes.FailedPrecondition},
-		{req: &gitalypb.UserRebaseConfirmableRequest{}, closeSend: true, desc: "empty request and close", code: codes.FailedPrecondition},
-		{closeSend: true, desc: "no request just close", code: codes.Internal},
+		{
+			req: &gitalypb.UserRebaseConfirmableRequest{
+				UserRebaseConfirmableRequestPayload: &gitalypb.UserRebaseConfirmableRequest_Header_{
+					Header: &gitalypb.UserRebaseConfirmableRequest_Header{
+						Repository: &gitalypb.Repository{},
+					},
+				},
+			},
+			desc: "empty request, don't close",
+			code: codes.FailedPrecondition,
+		},
+		{
+			req: &gitalypb.UserRebaseConfirmableRequest{
+				UserRebaseConfirmableRequestPayload: &gitalypb.UserRebaseConfirmableRequest_Header_{
+					Header: &gitalypb.UserRebaseConfirmableRequest_Header{
+						Repository: &gitalypb.Repository{},
+					},
+				},
+			},
+			closeSend: true,
+			desc:      "empty request and close",
+			code:      codes.FailedPrecondition,
+		},
+		{
+			closeSend: true,
+			desc:      "no request just close",
+			code:      codes.Internal,
+		},
 	}
 
 	for i, tc := range testCases {

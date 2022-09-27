@@ -372,8 +372,8 @@ func TestUserMergeBranch_abort(t *testing.T) {
 		closeSend bool
 		desc      string
 	}{
-		{req: &gitalypb.UserMergeBranchRequest{}, desc: "empty request, don't close"},
-		{req: &gitalypb.UserMergeBranchRequest{}, closeSend: true, desc: "empty request and close"},
+		{req: &gitalypb.UserMergeBranchRequest{Repository: &gitalypb.Repository{}}, desc: "empty request, don't close"},
+		{req: &gitalypb.UserMergeBranchRequest{Repository: &gitalypb.Repository{}}, closeSend: true, desc: "empty request and close"},
 		{closeSend: true, desc: "no request just close"},
 	}
 
@@ -1409,7 +1409,7 @@ func TestUserMergeToRef_ignoreHooksRequest(t *testing.T) {
 }
 
 // This error is used as a sentinel value
-var errRecvTimeout = fmt.Errorf("timeout waiting for response")
+var errRecvTimeout = errors.New("timeout waiting for response")
 
 func recvTimeout(bidi gitalypb.OperationService_UserMergeBranchClient, timeout time.Duration) (*gitalypb.UserMergeBranchResponse, error) {
 	type responseError struct {

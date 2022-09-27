@@ -3,11 +3,11 @@ package operations
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus/ctxlogrus"
 	"github.com/sirupsen/logrus"
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/updateref"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git2go"
@@ -17,28 +17,32 @@ import (
 )
 
 func validateMergeBranchRequest(request *gitalypb.UserMergeBranchRequest) error {
+	if request.GetRepository() == nil {
+		return gitalyerrors.ErrEmptyRepository
+	}
+
 	if request.User == nil {
-		return fmt.Errorf("empty user")
+		return errors.New("empty user")
 	}
 
 	if len(request.User.Email) == 0 {
-		return fmt.Errorf("empty user email")
+		return errors.New("empty user email")
 	}
 
 	if len(request.User.Name) == 0 {
-		return fmt.Errorf("empty user name")
+		return errors.New("empty user name")
 	}
 
 	if len(request.Branch) == 0 {
-		return fmt.Errorf("empty branch name")
+		return errors.New("empty branch name")
 	}
 
 	if request.CommitId == "" {
-		return fmt.Errorf("empty commit ID")
+		return errors.New("empty commit ID")
 	}
 
 	if len(request.Message) == 0 {
-		return fmt.Errorf("empty message")
+		return errors.New("empty message")
 	}
 
 	return nil
@@ -71,7 +75,10 @@ func (s *Server) UserMergeBranch(stream gitalypb.OperationService_UserMergeBranc
 
 	revision, err := quarantineRepo.ResolveRevision(ctx, referenceName.Revision())
 	if err != nil {
-		return err
+		if errors.Is(err, git.ErrReferenceNotFound) {
+			return helper.ErrNotFound(err)
+		}
+		return helper.ErrInternal(err)
 	}
 
 	authorDate, err := dateFromProto(firstRequest)
@@ -225,19 +232,19 @@ func (s *Server) UserMergeBranch(stream gitalypb.OperationService_UserMergeBranc
 
 func validateFFRequest(in *gitalypb.UserFFBranchRequest) error {
 	if in.Repository == nil {
-		return fmt.Errorf("empty repository")
+		return gitalyerrors.ErrEmptyRepository
 	}
 
 	if len(in.Branch) == 0 {
-		return fmt.Errorf("empty branch name")
+		return errors.New("empty branch name")
 	}
 
 	if in.User == nil {
-		return fmt.Errorf("empty user")
+		return errors.New("empty user")
 	}
 
 	if in.CommitId == "" {
-		return fmt.Errorf("empty commit id")
+		return errors.New("empty commit id")
 	}
 
 	return nil
@@ -271,7 +278,7 @@ func (s *Server) UserFFBranch(ctx context.Context, in *gitalypb.UserFFBranchRequ
 
 	ancestor, err := quarantineRepo.IsAncestor(ctx, revision.Revision(), commitID.Revision())
 	if err != nil {
-		return nil, err
+		return nil, helper.ErrInternalf("is %q an ancestor of %q: %w", commitID, revision, err)
 	}
 	if !ancestor {
 		return nil, helper.ErrFailedPreconditionf("not fast forward")
@@ -293,7 +300,7 @@ func (s *Server) UserFFBranch(ctx context.Context, in *gitalypb.UserFFBranchRequ
 			return &gitalypb.UserFFBranchResponse{}, nil
 		}
 
-		return nil, err
+		return nil, helper.ErrInternalf("update ref with hooks: %s(%v -> %v): %w", referenceName, revision, commitID, err)
 	}
 
 	return &gitalypb.UserFFBranchResponse{
@@ -304,24 +311,28 @@ func (s *Server) UserFFBranch(ctx context.Context, in *gitalypb.UserFFBranchRequ
 }
 
 func validateUserMergeToRefRequest(in *gitalypb.UserMergeToRefRequest) error {
+	if in.GetRepository() == nil {
+		return gitalyerrors.ErrEmptyRepository
+	}
+
 	if len(in.FirstParentRef) == 0 && len(in.Branch) == 0 {
-		return fmt.Errorf("empty first parent ref and branch name")
+		return errors.New("empty first parent ref and branch name")
 	}
 
 	if in.User == nil {
-		return fmt.Errorf("empty user")
+		return errors.New("empty user")
 	}
 
 	if in.SourceSha == "" {
-		return fmt.Errorf("empty source SHA")
+		return errors.New("empty source SHA")
 	}
 
 	if len(in.TargetRef) == 0 {
-		return fmt.Errorf("empty target ref")
+		return errors.New("empty target ref")
 	}
 
 	if !strings.HasPrefix(string(in.TargetRef), "refs/merge-requests") {
-		return fmt.Errorf("invalid target ref")
+		return errors.New("invalid target ref")
 	}
 
 	return nil
@@ -375,14 +386,14 @@ func (s *Server) UserMergeToRef(ctx context.Context, request *gitalypb.UserMerge
 
 		oid, err := git.ObjectHashSHA1.FromHex(targetRef.Target)
 		if err != nil {
-			return nil, helper.ErrInternalf("invalid target revision: %v", err)
+			return nil, helper.ErrInternalf("invalid target revision: %w", err)
 		}
 
 		oldTargetOID = oid
 	} else if errors.Is(err, git.ErrReferenceNotFound) {
 		oldTargetOID = git.ObjectHashSHA1.ZeroOID
 	} else {
-		return nil, helper.ErrInternalf("could not read target reference: %v", err)
+		return nil, helper.ErrInternalf("could not read target reference: %w", err)
 	}
 
 	// Now, we create the merge commit...
@@ -414,7 +425,7 @@ func (s *Server) UserMergeToRef(ctx context.Context, request *gitalypb.UserMerge
 
 	mergeOID, err := git.ObjectHashSHA1.FromHex(merge.CommitID)
 	if err != nil {
-		return nil, err
+		return nil, helper.ErrInternalf("parse merge commit SHA %v: %w", merge.CommitID, err)
 	}
 
 	// ... and move branch from target ref to the merge commit. The Ruby

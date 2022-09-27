@@ -4,7 +4,7 @@ package operations
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -130,7 +130,7 @@ func TestUserSquash_transactional(t *testing.T) {
 		{
 			desc: "preparatory vote failure",
 			voteFn: func(ctx context.Context, tx txinfo.Transaction, vote voting.Vote, phase voting.Phase) error {
-				return fmt.Errorf("vote failed")
+				return errors.New("vote failed")
 			},
 			expectedErr: helper.ErrAbortedf("preparatory vote on squashed commit: vote failed"),
 			expectedVotes: []voting.Vote{
@@ -142,7 +142,7 @@ func TestUserSquash_transactional(t *testing.T) {
 			desc: "committing vote failure",
 			voteFn: func(ctx context.Context, tx txinfo.Transaction, vote voting.Vote, phase voting.Phase) error {
 				if phase == voting.Committed {
-					return fmt.Errorf("vote failed")
+					return errors.New("vote failed")
 				}
 				return nil
 			},
@@ -759,7 +759,7 @@ func TestUserSquash_gitError(t *testing.T) {
 				StartSha:      startSha,
 				EndSha:        endSha,
 			},
-			expectedErr: helper.ErrInvalidArgumentf("UserSquash: empty user name"),
+			expectedErr: helper.ErrInvalidArgumentf("empty user name"),
 		},
 		{
 			desc: "author has no name set",
@@ -771,7 +771,7 @@ func TestUserSquash_gitError(t *testing.T) {
 				StartSha:      startSha,
 				EndSha:        endSha,
 			},
-			expectedErr: helper.ErrInvalidArgumentf("UserSquash: empty author name"),
+			expectedErr: helper.ErrInvalidArgumentf("empty author name"),
 		},
 		{
 			desc: "author has no email set",
@@ -783,7 +783,7 @@ func TestUserSquash_gitError(t *testing.T) {
 				StartSha:      startSha,
 				EndSha:        endSha,
 			},
-			expectedErr: helper.ErrInvalidArgumentf("UserSquash: empty author email"),
+			expectedErr: helper.ErrInvalidArgumentf("empty author email"),
 		},
 	}
 

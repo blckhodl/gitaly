@@ -8,21 +8,18 @@ import (
 	"strings"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus/ctxlogrus"
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/updateref"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git2go"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/v15/proto/go/gitalypb"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
-
-const userUpdateSubmoduleName = "UserUpdateSubmodule"
 
 //nolint: stylecheck // This is unintentionally missing documentation.
 func (s *Server) UserUpdateSubmodule(ctx context.Context, req *gitalypb.UserUpdateSubmoduleRequest) (*gitalypb.UserUpdateSubmoduleResponse, error) {
 	if err := validateUserUpdateSubmoduleRequest(req); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, userUpdateSubmoduleName+": %v", err)
+		return nil, helper.ErrInvalidArgument(err)
 	}
 
 	return s.userUpdateSubmodule(ctx, req)
@@ -30,31 +27,31 @@ func (s *Server) UserUpdateSubmodule(ctx context.Context, req *gitalypb.UserUpda
 
 func validateUserUpdateSubmoduleRequest(req *gitalypb.UserUpdateSubmoduleRequest) error {
 	if req.GetRepository() == nil {
-		return fmt.Errorf("empty Repository")
+		return gitalyerrors.ErrEmptyRepository
 	}
 
 	if req.GetUser() == nil {
-		return fmt.Errorf("empty User")
+		return errors.New("empty User")
 	}
 
 	if req.GetCommitSha() == "" {
-		return fmt.Errorf("empty CommitSha")
+		return errors.New("empty CommitSha")
 	}
 
 	if match, err := regexp.MatchString(`\A[0-9a-f]{40}\z`, req.GetCommitSha()); !match || err != nil {
-		return fmt.Errorf("invalid CommitSha")
+		return errors.New("invalid CommitSha")
 	}
 
 	if len(req.GetBranch()) == 0 {
-		return fmt.Errorf("empty Branch")
+		return errors.New("empty Branch")
 	}
 
 	if len(req.GetSubmodule()) == 0 {
-		return fmt.Errorf("empty Submodule")
+		return errors.New("empty Submodule")
 	}
 
 	if len(req.GetCommitMessage()) == 0 {
-		return fmt.Errorf("empty CommitMessage")
+		return errors.New("empty CommitMessage")
 	}
 
 	return nil
@@ -68,7 +65,7 @@ func (s *Server) userUpdateSubmodule(ctx context.Context, req *gitalypb.UserUpda
 
 	branches, err := quarantineRepo.GetBranches(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("%s: get branches: %w", userUpdateSubmoduleName, err)
+		return nil, helper.ErrInternalf("get branches: %w", err)
 	}
 	if len(branches) == 0 {
 		return &gitalypb.UserUpdateSubmoduleResponse{
@@ -83,12 +80,12 @@ func (s *Server) userUpdateSubmodule(ctx context.Context, req *gitalypb.UserUpda
 		if errors.Is(err, git.ErrReferenceNotFound) {
 			return nil, helper.ErrInvalidArgumentf("Cannot find branch")
 		}
-		return nil, fmt.Errorf("%s: get branch: %w", userUpdateSubmoduleName, err)
+		return nil, helper.ErrInternalf("resolve revision: %w", err)
 	}
 
 	repoPath, err := quarantineRepo.Path()
 	if err != nil {
-		return nil, fmt.Errorf("%s: locate repo: %w", userUpdateSubmoduleName, err)
+		return nil, fmt.Errorf("locate repo: %w", err)
 	}
 
 	authorDate, err := dateFromProto(req)
@@ -123,7 +120,7 @@ func (s *Server) userUpdateSubmodule(ctx context.Context, req *gitalypb.UserUpda
 				ctxlogrus.
 					Extract(ctx).
 					WithError(err).
-					Error(userUpdateSubmoduleName + ": git2go subcommand failure")
+					Error("UserUpdateSubmodule: git2go subcommand failure")
 				break
 			}
 		}
@@ -135,7 +132,7 @@ func (s *Server) userUpdateSubmodule(ctx context.Context, req *gitalypb.UserUpda
 		if resp != nil {
 			return resp, nil
 		}
-		return nil, fmt.Errorf("%s: submodule subcommand: %w", userUpdateSubmoduleName, err)
+		return nil, helper.ErrInternalf("submodule subcommand: %w", err)
 	}
 
 	commitID, err := git.ObjectHashSHA1.FromHex(result.CommitID)
@@ -166,7 +163,7 @@ func (s *Server) userUpdateSubmodule(ctx context.Context, req *gitalypb.UserUpda
 			}, nil
 		}
 
-		return nil, err
+		return nil, helper.ErrInternalf("update ref with hooks: %s(%v -> %v): %w", referenceName, branchOID, commitID, err)
 	}
 
 	return &gitalypb.UserUpdateSubmoduleResponse{

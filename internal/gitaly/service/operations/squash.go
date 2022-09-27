@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git2go"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/gitaly/transaction"
@@ -21,7 +22,7 @@ const (
 // commit whose single parent is the start revision.
 func (s *Server) UserSquash(ctx context.Context, req *gitalypb.UserSquashRequest) (*gitalypb.UserSquashResponse, error) {
 	if err := validateUserSquashRequest(req); err != nil {
-		return nil, helper.ErrInvalidArgumentf("UserSquash: %v", err)
+		return nil, helper.ErrInvalidArgument(err)
 	}
 
 	sha, err := s.userSquash(ctx, req)
@@ -34,7 +35,7 @@ func (s *Server) UserSquash(ctx context.Context, req *gitalypb.UserSquashRequest
 
 func validateUserSquashRequest(req *gitalypb.UserSquashRequest) error {
 	if req.GetRepository() == nil {
-		return errors.New("empty Repository")
+		return gitalyerrors.ErrEmptyRepository
 	}
 
 	if req.GetUser() == nil {

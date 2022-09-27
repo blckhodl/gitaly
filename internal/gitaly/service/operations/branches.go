@@ -4,29 +4,35 @@ import (
 	"context"
 	"errors"
 
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/updateref"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/gitaly/hook"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/v15/proto/go/gitalypb"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
+
+func validateUserCreateBranchRequest(in *gitalypb.UserCreateBranchRequest) error {
+	if in.GetRepository() == nil {
+		return gitalyerrors.ErrEmptyRepository
+	}
+	if len(in.BranchName) == 0 {
+		return errors.New("empty branch name")
+	}
+	if in.User == nil {
+		return errors.New("empty user")
+	}
+	if len(in.StartPoint) == 0 {
+		return errors.New("empty start point")
+	}
+	return nil
+}
 
 //nolint: stylecheck // This is unintentionally missing documentation.
 func (s *Server) UserCreateBranch(ctx context.Context, req *gitalypb.UserCreateBranchRequest) (*gitalypb.UserCreateBranchResponse, error) {
-	if len(req.BranchName) == 0 {
-		return nil, status.Errorf(codes.InvalidArgument, "Bad Request (empty branch name)")
+	if err := validateUserCreateBranchRequest(req); err != nil {
+		return nil, helper.ErrInvalidArgument(err)
 	}
-
-	if req.User == nil {
-		return nil, status.Errorf(codes.InvalidArgument, "empty user")
-	}
-
-	if len(req.StartPoint) == 0 {
-		return nil, status.Errorf(codes.InvalidArgument, "empty start point")
-	}
-
 	quarantineDir, quarantineRepo, err := s.quarantinedRepo(ctx, req.GetRepository())
 	if err != nil {
 		return nil, err
@@ -41,20 +47,20 @@ func (s *Server) UserCreateBranch(ctx context.Context, req *gitalypb.UserCreateB
 	startPointCommit, err := quarantineRepo.ReadCommit(ctx, git.Revision(req.StartPoint))
 	// END TODO
 	if err != nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "revspec '%s' not found", req.StartPoint)
+		return nil, helper.ErrFailedPreconditionf("revspec '%s' not found", req.StartPoint)
 	}
 
 	startPointOID, err := git.ObjectHashSHA1.FromHex(startPointCommit.Id)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "could not parse start point commit ID: %v", err)
+		return nil, helper.ErrInvalidArgumentf("could not parse start point commit ID: %w", err)
 	}
 
 	referenceName := git.NewReferenceNameFromBranchName(string(req.BranchName))
 	_, err = quarantineRepo.GetReference(ctx, referenceName)
 	if err == nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "Could not update %s. Please refresh and try again.", req.BranchName)
+		return nil, helper.ErrFailedPreconditionf("Could not update %s. Please refresh and try again.", req.BranchName)
 	} else if !errors.Is(err, git.ErrReferenceNotFound) {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, helper.ErrInternal(err)
 	}
 
 	if err := s.updateReferenceWithHooks(ctx, req.GetRepository(), req.User, quarantineDir, referenceName, startPointOID, git.ObjectHashSHA1.ZeroOID); err != nil {
@@ -83,7 +89,7 @@ func (s *Server) UserCreateBranch(ctx context.Context, req *gitalypb.UserCreateB
 
 		var updateRefError updateref.Error
 		if errors.As(err, &updateRefError) {
-			return nil, status.Error(codes.FailedPrecondition, err.Error())
+			return nil, helper.ErrFailedPrecondition(err)
 		}
 
 		return nil, err
@@ -98,20 +104,24 @@ func (s *Server) UserCreateBranch(ctx context.Context, req *gitalypb.UserCreateB
 }
 
 func validateUserUpdateBranchGo(req *gitalypb.UserUpdateBranchRequest) error {
+	if req.GetRepository() == nil {
+		return gitalyerrors.ErrEmptyRepository
+	}
+
 	if req.User == nil {
-		return status.Errorf(codes.InvalidArgument, "empty user")
+		return errors.New("empty user")
 	}
 
 	if len(req.BranchName) == 0 {
-		return status.Errorf(codes.InvalidArgument, "empty branch name")
+		return errors.New("empty branch name")
 	}
 
 	if len(req.Oldrev) == 0 {
-		return status.Errorf(codes.InvalidArgument, "empty oldrev")
+		return errors.New("empty oldrev")
 	}
 
 	if len(req.Newrev) == 0 {
-		return status.Errorf(codes.InvalidArgument, "empty newrev")
+		return errors.New("empty newrev")
 	}
 
 	return nil
@@ -121,17 +131,17 @@ func validateUserUpdateBranchGo(req *gitalypb.UserUpdateBranchRequest) error {
 func (s *Server) UserUpdateBranch(ctx context.Context, req *gitalypb.UserUpdateBranchRequest) (*gitalypb.UserUpdateBranchResponse, error) {
 	// Validate the request
 	if err := validateUserUpdateBranchGo(req); err != nil {
-		return nil, err
+		return nil, helper.ErrInvalidArgument(err)
 	}
 
 	newOID, err := git.ObjectHashSHA1.FromHex(string(req.Newrev))
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "could not parse newrev: %v", err)
+		return nil, helper.ErrInternalf("could not parse newrev: %w", err)
 	}
 
 	oldOID, err := git.ObjectHashSHA1.FromHex(string(req.Oldrev))
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "could not parse oldrev: %v", err)
+		return nil, helper.ErrInternalf("could not parse oldrev: %w", err)
 	}
 
 	referenceName := git.NewReferenceNameFromBranchName(string(req.BranchName))
@@ -155,23 +165,31 @@ func (s *Server) UserUpdateBranch(ctx context.Context, req *gitalypb.UserUpdateB
 		// say "branch-name", not
 		// "refs/heads/branch-name". See the
 		// "Gitlab::Git::CommitError" case in the Ruby code.
-		return nil, status.Errorf(codes.FailedPrecondition, "Could not update %s. Please refresh and try again.", req.BranchName)
+		return nil, helper.ErrFailedPreconditionf("Could not update %s. Please refresh and try again.", req.BranchName)
 	}
 
 	return &gitalypb.UserUpdateBranchResponse{}, nil
 }
 
+func validateUserDeleteBranchRequest(in *gitalypb.UserDeleteBranchRequest) error {
+	if in.GetRepository() == nil {
+		return gitalyerrors.ErrEmptyRepository
+	}
+	if len(in.GetBranchName()) == 0 {
+		return errors.New("bad request: empty branch name")
+	}
+	if in.GetUser() == nil {
+		return errors.New("bad request: empty user")
+	}
+	return nil
+}
+
 // UserDeleteBranch force-deletes a single branch in the context of a specific user. It executes
 // hooks and contacts Rails to verify that the user is indeed allowed to delete that branch.
 func (s *Server) UserDeleteBranch(ctx context.Context, req *gitalypb.UserDeleteBranchRequest) (*gitalypb.UserDeleteBranchResponse, error) {
-	if len(req.BranchName) == 0 {
-		return nil, helper.ErrInvalidArgumentf("bad request: empty branch name")
+	if err := validateUserDeleteBranchRequest(req); err != nil {
+		return nil, helper.ErrInvalidArgument(err)
 	}
-
-	if req.User == nil {
-		return nil, helper.ErrInvalidArgumentf("bad request: empty user")
-	}
-
 	referenceName := git.NewReferenceNameFromBranchName(string(req.BranchName))
 
 	referenceValue, err := s.localrepo(req.GetRepository()).ResolveRevision(ctx, referenceName.Revision())

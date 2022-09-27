@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	gitalyerrors "gitlab.com/gitlab-org/gitaly/v15/internal/errors"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git/updateref"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/git2go"
 	"gitlab.com/gitlab-org/gitaly/v15/internal/helper"
 	"gitlab.com/gitlab-org/gitaly/v15/proto/go/gitalypb"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 //nolint: stylecheck // This is unintentionally missing documentation.
@@ -23,11 +22,11 @@ func (s *Server) UserRebaseConfirmable(stream gitalypb.OperationService_UserReba
 
 	header := firstRequest.GetHeader()
 	if header == nil {
-		return helper.ErrInvalidArgument(errors.New("UserRebaseConfirmable: empty UserRebaseConfirmableRequest.Header"))
+		return helper.ErrInvalidArgument(errors.New("empty UserRebaseConfirmableRequest.Header"))
 	}
 
 	if err := validateUserRebaseConfirmableHeader(header); err != nil {
-		return helper.ErrInvalidArgumentf("UserRebaseConfirmable: %v", err)
+		return helper.ErrInvalidArgument(err)
 	}
 
 	ctx := stream.Context()
@@ -51,7 +50,7 @@ func (s *Server) UserRebaseConfirmable(stream gitalypb.OperationService_UserReba
 	remoteFetch := rebaseRemoteFetch{header: header}
 	startRevision, err := s.fetchStartRevision(ctx, quarantineRepo, remoteFetch)
 	if err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return helper.ErrInternal(err)
 	}
 
 	committer := git2go.NewSignature(string(header.User.Name), string(header.User.Email), time.Now())
@@ -103,7 +102,7 @@ func (s *Server) UserRebaseConfirmable(stream gitalypb.OperationService_UserReba
 			RebaseSha: newrev.String(),
 		},
 	}); err != nil {
-		return fmt.Errorf("send rebase sha: %w", err)
+		return helper.ErrInternalf("send rebase sha: %w", err)
 	}
 
 	secondRequest, err := stream.Recv()
@@ -146,7 +145,7 @@ func (s *Server) UserRebaseConfirmable(stream gitalypb.OperationService_UserReba
 			return fmt.Errorf("update ref: %w", err)
 		}
 
-		return err
+		return helper.ErrInternalf("update ref with hooks: %s(%v -> %v): %w", branch, oldrev, newrev, err)
 	}
 
 	return stream.Send(&gitalypb.UserRebaseConfirmableResponse{
@@ -161,7 +160,7 @@ var ErrInvalidBranch = errors.New("invalid branch name")
 
 func validateUserRebaseConfirmableHeader(header *gitalypb.UserRebaseConfirmableRequest_Header) error {
 	if header.GetRepository() == nil {
-		return errors.New("empty Repository")
+		return gitalyerrors.ErrEmptyRepository
 	}
 
 	if header.GetUser() == nil {
