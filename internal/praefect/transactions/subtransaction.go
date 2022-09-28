@@ -363,3 +363,33 @@ func (t *subtransaction) getVote(node string) (*voting.Vote, error) {
 	vote := *voter.vote
 	return &vote, nil
 }
+
+// isQuorumPossible determines the subtransaction can reach the
+// required vote threshold with the amount of remaining votes.
+// Failed nodes do not count towards the total amount of outstanding
+// votes.
+func (t *subtransaction) isQuorumPossible(failedNodes map[string]struct{}) bool {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
+	// Count the total amount of votes from voters that have not yet cast their decision.
+	var outstandingVoteCount uint
+	for _, voter := range t.votersByNode {
+		// Do not count a failed nodes outstanding votes
+		_, ok := failedNodes[voter.Name]
+
+		if voter.vote == nil && !ok {
+			outstandingVoteCount += voter.Votes
+		}
+	}
+
+	// Determine the amount of votes possessed by the current leading vote.
+	var leadingVoteCount uint
+	for _, votes := range t.voteCounts {
+		if votes > leadingVoteCount {
+			leadingVoteCount = votes
+		}
+	}
+
+	return leadingVoteCount+outstandingVoteCount >= t.threshold
+}
