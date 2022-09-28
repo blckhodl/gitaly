@@ -84,23 +84,26 @@ func (s *server) DeleteRefs(ctx context.Context, in *gitalypb.DeleteRefsRequest)
 
 	if err := updater.Prepare(); err != nil {
 		var errAlreadyLocked *updateref.ErrAlreadyLocked
-		if featureflag.DeleteRefsStructuredErrors.IsEnabled(ctx) &&
-			errors.As(err, &errAlreadyLocked) {
-			detailedErr, err := helper.ErrWithDetails(
-				helper.ErrFailedPreconditionf("cannot lock references"),
-				&gitalypb.DeleteRefsError{
-					Error: &gitalypb.DeleteRefsError_ReferencesLocked{
-						ReferencesLocked: &gitalypb.ReferencesLockedError{
-							Refs: [][]byte{[]byte(errAlreadyLocked.Ref)},
+		if featureflag.DeleteRefsStructuredErrors.IsEnabled(ctx) {
+			if errors.As(err, &errAlreadyLocked) {
+				detailedErr, err := helper.ErrWithDetails(
+					helper.ErrFailedPreconditionf("cannot lock references"),
+					&gitalypb.DeleteRefsError{
+						Error: &gitalypb.DeleteRefsError_ReferencesLocked{
+							ReferencesLocked: &gitalypb.ReferencesLockedError{
+								Refs: [][]byte{[]byte(errAlreadyLocked.Ref)},
+							},
 						},
 					},
-				},
-			)
-			if err != nil {
-				return nil, helper.ErrInternalf("error details: %w", err)
+				)
+				if err != nil {
+					return nil, helper.ErrInternalf("error details: %w", err)
+				}
+
+				return nil, detailedErr
 			}
 
-			return nil, detailedErr
+			return nil, helper.ErrInternalf("unable to prepare: %w", err)
 		}
 
 		return &gitalypb.DeleteRefsResponse{
