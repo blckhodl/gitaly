@@ -3,6 +3,7 @@
 package transactions
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -50,4 +51,91 @@ func TestTransaction_DidVote(t *testing.T) {
 	require.NoError(t, tx.vote(ctx, "v2", voting.VoteFromData([]byte{})))
 	require.True(t, tx.DidVote("v1"))
 	require.True(t, tx.DidVote("v2"))
+}
+
+func TestTransaction_addFailedNode(t *testing.T) {
+	node := "1"
+
+	voters := []Voter{
+		{Name: "1", Votes: 1, vote: nil},
+		{Name: "2", Votes: 1, vote: nil},
+		{Name: "3", Votes: 1, vote: nil},
+	}
+
+	transaction, err := newTransaction(1, voters, 2)
+	require.NoError(t, err)
+
+	transaction.addFailedNode(node)
+
+	_, ok := transaction.failedNodes[node]
+
+	require.True(t, ok)
+}
+
+func TestTransaction_isQuorumPossible(t *testing.T) {
+	voters := []Voter{
+		{Name: "1", Votes: 1, vote: nil},
+		{Name: "2", Votes: 1, vote: nil},
+		{Name: "3", Votes: 1, vote: nil},
+	}
+
+	threshold := uint(2)
+	sub1, err := newSubtransaction(voters, threshold)
+	require.NoError(t, err)
+	sub2, err := newSubtransaction(voters, threshold)
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		desc           string
+		subs           []*subtransaction
+		threshold      uint
+		failedNodes    map[string]struct{}
+		quorumPossible bool
+		quorumError    error
+	}{
+		{
+			desc:           "No subtransactions",
+			subs:           nil,
+			failedNodes:    map[string]struct{}{},
+			threshold:      threshold,
+			quorumPossible: false,
+			quorumError:    errors.New("transaction has no subtransactions"),
+		},
+		{
+			desc:           "Single subtransaction",
+			subs:           []*subtransaction{sub1},
+			failedNodes:    map[string]struct{}{},
+			threshold:      threshold,
+			quorumPossible: true,
+			quorumError:    nil,
+		},
+		{
+			desc:           "Two subtransactions and one failed node",
+			subs:           []*subtransaction{sub1, sub2},
+			failedNodes:    map[string]struct{}{"1": {}},
+			threshold:      threshold,
+			quorumPossible: true,
+			quorumError:    nil,
+		},
+		{
+			desc:           "Two subtransactions and two failed nodes",
+			subs:           []*subtransaction{sub1, sub2},
+			failedNodes:    map[string]struct{}{"1": {}, "2": {}},
+			threshold:      threshold,
+			quorumPossible: false,
+			quorumError:    nil,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			transaction, err := newTransaction(1, voters, tc.threshold)
+			require.NoError(t, err)
+
+			transaction.subtransactions = tc.subs
+			transaction.failedNodes = tc.failedNodes
+
+			possible, err := transaction.isQuorumPossible()
+			require.Equal(t, tc.quorumPossible, possible)
+			require.Equal(t, tc.quorumError, err)
+		})
+	}
 }
