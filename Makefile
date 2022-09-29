@@ -442,6 +442,11 @@ check-mod-tidy:
 lint: ${GOLANGCI_LINT} libgit2 ${GITALY_PACKED_EXECUTABLES}
 	${Q}${GOLANGCI_LINT} run --build-tags "${SERVER_BUILD_TAGS},${GIT2GO_BUILD_TAGS}" --out-format tab --config ${GOLANGCI_LINT_CONFIG} ${GOLANGCI_LINT_OPTIONS}
 
+.PHONY: lint-fix
+## Run Go linter.
+lint-fix: ${GOLANGCI_LINT} libgit2 ${GITALY_PACKED_EXECUTABLES}
+	${Q}${GOLANGCI_LINT} run --fix --build-tags "${SERVER_BUILD_TAGS},${GIT2GO_BUILD_TAGS}" --out-format tab --config ${GOLANGCI_LINT_CONFIG} ${GOLANGCI_LINT_OPTIONS}
+
 .PHONY: format
 ## Run Go formatter and adjust imports.
 format: ${GOIMPORTS} ${GOFUMPT}
