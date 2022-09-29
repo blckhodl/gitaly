@@ -467,43 +467,18 @@ func (c *Coordinator) mutatorStreamParameters(ctx context.Context, call grpcCall
 					ctxlogrus.Extract(ctx).WithError(err).
 						Error("proxying to secondary failed")
 
-					// The node associated with the failed RPC is added to the transaction's
-					// `failedNode` set. This set tracks all the nodes that have failed
-					// throughout the pending transaction and is used to determine if quorum
-					// is still possible.
-					if err := c.txMgr.FailTransactionNode(transaction.ID(), secondary.Storage); err != nil {
-						ctxlogrus.Extract(ctx).
-							WithError(err).
-							Error("adding failed node to transaction failed")
+					// Cancels failed node's voter in the current subtransaction.
+					// Also updates internal state of subtansaction to release
+					// blocked voters if all voters have results.
+					if err := c.txMgr.CancelTransactionNodeVoter(transaction.ID(), secondary.Storage); err != nil {
+						ctxlogrus.Extract(ctx).WithError(err).
+							Error("cancelling secondary voter failed")
 					}
 
-					// Only if detected secondary node error results in the transaction
-					// no longer being able to achieve quorum should an error be returned.
-					// This is to ensure that streams do not get canceled and transactions
-					// can continue until quorum is impossible.
-					if quorumPossible, qErr := c.txMgr.IsTransactionQuorumPossible(transaction.ID()); qErr != nil {
-						ctxlogrus.Extract(ctx).
-							WithError(qErr).
-							Error("transaction quorum check failed")
-
-						return nil
-					} else if !quorumPossible {
-						// If quorum is no longer possible the transaction should be stopped
-						// and the error returned. Returning an error will result in all the
-						// streams getting cancelled.
-						if err := c.txMgr.StopTransaction(ctx, transaction.ID()); err != nil {
-							ctxlogrus.Extract(ctx).
-								WithError(err).
-								Error("failed to stop transaction")
-						}
-
-						return err
-					}
-
-					// If this error does not result in quorum becoming impossible
-					// the resulting is ignored. This is so that we do not abort
-					// transactions which are ongoing and may succeed even with a
-					// subset of secondaries bailing out.
+					// The error is ignored, so we do not abort transactions
+					// which are ongoing and may succeed even with a subset
+					// of secondaries bailing out. Once all voter's results
+					// have been decided
 					return nil
 				},
 			})

@@ -73,8 +73,6 @@ type transaction struct {
 	lock            sync.Mutex
 	state           transactionState
 	subtransactions []*subtransaction
-
-	failedNodes map[string]struct{}
 }
 
 func newTransaction(id uint64, voters []Voter, threshold uint) (*transaction, error) {
@@ -106,11 +104,10 @@ func newTransaction(id uint64, voters []Voter, threshold uint) (*transaction, er
 	}
 
 	return &transaction{
-		id:          id,
-		threshold:   threshold,
-		voters:      voters,
-		state:       transactionOpen,
-		failedNodes: make(map[string]struct{}),
+		id:        id,
+		threshold: threshold,
+		voters:    voters,
+		state:     transactionOpen,
 	}, nil
 }
 
@@ -286,24 +283,19 @@ func (t *transaction) vote(ctx context.Context, node string, vote voting.Vote) e
 	return subtransaction.collectVotes(ctx, node)
 }
 
-// addFailedNode sets a node in the transaction as failed.
-func (t *transaction) addFailedNode(node string) {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-
-	t.failedNodes[node] = struct{}{}
-}
-
-// isQuorumPossible checks the transaction's latest subtransaction
-// to see if quorum is possible.
-func (t *transaction) isQuorumPossible() (bool, error) {
+// cancelNodeVoter cancels the voter associated with the specified node in the current pending subtransaction.
+func (t *transaction) cancelNodeVoter(node string) error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
 	if len(t.subtransactions) == 0 {
-		return false, errors.New("transaction has no subtransactions")
+		return errors.New("transaction has no subtransactions")
 	}
 
-	latest := t.subtransactions[len(t.subtransactions)-1]
-	return latest.isQuorumPossible(t.failedNodes), nil
+	subtransaction := t.subtransactions[len(t.subtransactions)-1]
+	if err := subtransaction.cancelNodeVoter(node); err != nil {
+		return err
+	}
+
+	return nil
 }

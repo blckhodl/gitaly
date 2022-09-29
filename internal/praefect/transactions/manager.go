@@ -231,10 +231,7 @@ func (mgr *Manager) StopTransaction(ctx context.Context, transactionID uint64) e
 	return nil
 }
 
-// FailTransactionNode sets a node as failed in the specified transaction.
-// Failed nodes in a transaction are referenced when a quorum check is performed
-// on a subtransaction to ensure that their outstanding votes do not count.
-func (mgr *Manager) FailTransactionNode(transactionID uint64, node string) error {
+func (mgr *Manager) CancelTransactionNodeVoter(transactionID uint64, node string) error {
 	mgr.lock.Lock()
 	transaction, ok := mgr.transactions[transactionID]
 	mgr.lock.Unlock()
@@ -243,21 +240,9 @@ func (mgr *Manager) FailTransactionNode(transactionID uint64, node string) error
 		return fmt.Errorf("%w: %d", ErrNotFound, transactionID)
 	}
 
-	transaction.addFailedNode(node)
-
-	return nil
-}
-
-// IsTransactionQuorumPossible looks at the specified transaction and verifies if there is
-// enough outstanding votes remaining in the current subtransaction to still achieve quorum.
-func (mgr *Manager) IsTransactionQuorumPossible(transactionID uint64) (bool, error) {
-	mgr.lock.Lock()
-	transaction, ok := mgr.transactions[transactionID]
-	mgr.lock.Unlock()
-
-	if !ok {
-		return false, fmt.Errorf("%w: %d", ErrNotFound, transactionID)
+	if err := transaction.cancelNodeVoter(node); err != nil {
+		return err
 	}
 
-	return transaction.isQuorumPossible()
+	return nil
 }

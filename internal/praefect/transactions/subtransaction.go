@@ -171,10 +171,13 @@ func (t *subtransaction) updateVoterState(voter *Voter, vote *voting.Vote) error
 			return errors.New("subtransaction was already finished")
 		}
 
+		voter.result = VoteCanceled
+
 		// Remove the voter's support for the vote so it's not counted towards the
 		// majority. The node is not going to commit the subtransaction anyway.
-		t.voteCounts[*voter.vote] -= voter.Votes
-		voter.result = VoteCanceled
+		if voter.vote != nil {
+			t.voteCounts[*voter.vote] -= voter.Votes
+		}
 	}
 
 	defer func() {
@@ -195,7 +198,7 @@ func (t *subtransaction) updateVoterState(voter *Voter, vote *voting.Vote) error
 
 	var outstandingVotes uint
 	for _, voter := range t.votersByNode {
-		if voter.vote == nil {
+		if voter.vote == nil && voter.result == VoteUndecided {
 			outstandingVotes += voter.Votes
 		}
 	}
@@ -364,32 +367,24 @@ func (t *subtransaction) getVote(node string) (*voting.Vote, error) {
 	return &vote, nil
 }
 
-// isQuorumPossible determines the subtransaction can reach the
-// required vote threshold with the amount of remaining votes.
-// Failed nodes do not count towards the total amount of outstanding
-// votes.
-func (t *subtransaction) isQuorumPossible(failedNodes map[string]struct{}) bool {
+// cancelNodeVoter updates a node's associated voter state to `VoteCanceled`.
+// All must voters wait until either quorum has been achieved or all voters
+// have a result. A canceled voter's votes are not counted as a part of the
+// total outstanding votes so if quorum becomes
+func (t *subtransaction) cancelNodeVoter(node string) error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
-	// Count the total amount of votes from voters that have not yet cast their decision.
-	var outstandingVoteCount uint
-	for _, voter := range t.votersByNode {
-		// Do not count a failed nodes outstanding votes
-		_, ok := failedNodes[voter.Name]
-
-		if voter.vote == nil && !ok {
-			outstandingVoteCount += voter.Votes
-		}
+	voter, ok := t.votersByNode[node]
+	if !ok {
+		return fmt.Errorf("invalid node for subtransaction: %q", node)
 	}
 
-	// Determine the amount of votes possessed by the current leading vote.
-	var leadingVoteCount uint
-	for _, votes := range t.voteCounts {
-		if votes > leadingVoteCount {
-			leadingVoteCount = votes
-		}
+	// Updating voter state with a nil vote will result in the voter
+	// getting canceled.
+	if err := t.updateVoterState(voter, nil); err != nil {
+		return fmt.Errorf("cancel vote: %w", err)
 	}
 
-	return leadingVoteCount+outstandingVoteCount >= t.threshold
+	return nil
 }

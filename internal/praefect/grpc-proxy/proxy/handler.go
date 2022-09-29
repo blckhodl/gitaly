@@ -190,13 +190,6 @@ func (s *handler) handler(srv interface{}, serverStream grpc.ServerStream) (fina
 				cancelStreams(allStreams)
 			}
 		case secondaryErr = <-secondaryErrChan:
-			// Secondary errors are only sent if quorum is no longer possible.
-			// This is to prevent a single secondary failure from cancelling the
-			// entire transaction.
-			if secondaryErr != nil {
-				cancelStreams(allStreams)
-			}
-
 			secondariesProxied = true
 		case primaryErr = <-p2cErrChan:
 			// This happens when the clientStream has nothing else to offer (io.EOF) or
