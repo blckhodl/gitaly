@@ -10,13 +10,11 @@ import (
 	"gitlab.com/gitlab-org/gitaly/v15/proto/go/gitalypb"
 )
 
-//nolint:stylecheck // This is unintentionally missing documentation.
 type Server struct {
 	gitalypb.UnimplementedRefTransactionServer
 	txMgr *transactions.Manager
 }
 
-//nolint:stylecheck // This is unintentionally missing documentation.
 func NewServer(txMgr *transactions.Manager) gitalypb.RefTransactionServer {
 	return &Server{
 		txMgr: txMgr,

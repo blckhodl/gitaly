@@ -37,7 +37,6 @@ func NewAssignmentStore(db glsql.Querier, configuredStorages map[string][]string
 	return AssignmentStore{db: db, configuredStorages: configuredStorages}
 }
 
-//nolint:stylecheck // This is unintentionally missing documentation.
 func (s AssignmentStore) GetHostAssignments(ctx context.Context, virtualStorage string, repositoryID int64) ([]string, error) {
 	configuredStorages, ok := s.configuredStorages[virtualStorage]
 	if !ok {

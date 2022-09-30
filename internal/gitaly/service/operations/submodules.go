@@ -19,7 +19,6 @@ import (
 
 const userUpdateSubmoduleName = "UserUpdateSubmodule"
 
-//nolint:stylecheck // This is unintentionally missing documentation.
 func (s *Server) UserUpdateSubmodule(ctx context.Context, req *gitalypb.UserUpdateSubmoduleRequest) (*gitalypb.UserUpdateSubmoduleResponse, error) {
 	if err := validateUserUpdateSubmoduleRequest(req); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, userUpdateSubmoduleName+": %v", err)

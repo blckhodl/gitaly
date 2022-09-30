@@ -66,7 +66,6 @@ type ReplicationJob struct {
 	Params            Params `json:"params"`
 }
 
-//nolint:stylecheck // This is unintentionally missing documentation.
 func (job *ReplicationJob) Scan(value interface{}) error {
 	if value == nil {
 		return nil
@@ -80,7 +79,6 @@ func (job *ReplicationJob) Scan(value interface{}) error {
 	return json.Unmarshal(d, job)
 }
 
-//nolint:stylecheck // This is unintentionally missing documentation.
 func (job ReplicationJob) Value() (driver.Value, error) {
 	data, err := json.Marshal(job)
 	if err != nil {
@@ -208,7 +206,6 @@ type PostgresReplicationEventQueue struct {
 	qc glsql.Querier
 }
 
-//nolint:stylecheck // This is unintentionally missing documentation.
 func (rq PostgresReplicationEventQueue) Enqueue(ctx context.Context, event ReplicationEvent) (ReplicationEvent, error) {
 	// When `Enqueue` method is called:
 	//  1. Insertion of the new record into `replication_queue_lock` table, so we are ensured all events have
@@ -241,7 +238,6 @@ func (rq PostgresReplicationEventQueue) Enqueue(ctx context.Context, event Repli
 	return events[0], nil
 }
 
-//nolint:stylecheck // This is unintentionally missing documentation.
 func (rq PostgresReplicationEventQueue) Dequeue(ctx context.Context, virtualStorage, nodeStorage string, count int) ([]ReplicationEvent, error) {
 	// When `Dequeue` method is called:
 	//  1. Events with attempts left that are either in `ready` or `failed` state are candidates for dequeuing.
@@ -322,7 +318,6 @@ func (rq PostgresReplicationEventQueue) Dequeue(ctx context.Context, virtualStor
 	return res, nil
 }
 
-//nolint:stylecheck // This is unintentionally missing documentation.
 func (rq PostgresReplicationEventQueue) Acknowledge(ctx context.Context, state JobState, ids []uint64) ([]uint64, error) {
 	// When `Acknowledge` method is called:
 	//  1. The list of event `id`s and corresponding <lock>s retrieved from `replication_queue` table as passed in by the
@@ -476,8 +471,10 @@ func (rq PostgresReplicationEventQueue) StartHealthUpdate(ctx context.Context, t
 
 // AcknowledgeStale moves replication events that are 'in_progress' state for too long (more then staleAfter)
 // into the next state:
-//   'failed' - in case it has more attempts to be executed
-//   'dead' - in case it has no more attempts to be executed
+//
+//	'failed' - in case it has more attempts to be executed
+//	'dead' - in case it has no more attempts to be executed
+//
 // The job considered 'in_progress' if it has corresponding entry in the 'replication_queue_job_lock' table.
 // When moving from 'in_progress' to other state the entry from 'replication_queue_job_lock' table will be
 // removed and entry in the 'replication_queue_lock' will be updated if needed (release of the lock).

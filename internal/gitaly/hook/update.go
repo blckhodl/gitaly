@@ -11,7 +11,6 @@ import (
 	"gitlab.com/gitlab-org/gitaly/v15/proto/go/gitalypb"
 )
 
-//nolint:stylecheck // This is unintentionally missing documentation.
 func (m *GitLabHookManager) UpdateHook(ctx context.Context, repo *gitalypb.Repository, ref, oldValue, newValue string, env []string, stdout, stderr io.Writer) error {
 	payload, err := git.HooksPayloadFromEnv(env)
 	if err != nil {

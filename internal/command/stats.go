@@ -9,13 +9,11 @@ import (
 
 type requestStatsKey struct{}
 
-//nolint:stylecheck // This is unintentionally missing documentation.
 type Stats struct {
 	registry map[string]int
 	sync.Mutex
 }
 
-//nolint:stylecheck // This is unintentionally missing documentation.
 func (stats *Stats) RecordSum(key string, value int) {
 	stats.Lock()
 	defer stats.Unlock()
@@ -27,7 +25,6 @@ func (stats *Stats) RecordSum(key string, value int) {
 	stats.registry[key] = value
 }
 
-//nolint:stylecheck // This is unintentionally missing documentation.
 func (stats *Stats) RecordMax(key string, value int) {
 	stats.Lock()
 	defer stats.Unlock()
@@ -41,7 +38,6 @@ func (stats *Stats) RecordMax(key string, value int) {
 	stats.registry[key] = value
 }
 
-//nolint:stylecheck // This is unintentionally missing documentation.
 func (stats *Stats) Fields() logrus.Fields {
 	stats.Lock()
 	defer stats.Unlock()
@@ -53,13 +49,11 @@ func (stats *Stats) Fields() logrus.Fields {
 	return f
 }
 
-//nolint:stylecheck // This is unintentionally missing documentation.
 func StatsFromContext(ctx context.Context) *Stats {
 	stats, _ := ctx.Value(requestStatsKey{}).(*Stats)
 	return stats
 }
 
-//nolint:stylecheck // This is unintentionally missing documentation.
 func InitContextStats(ctx context.Context) context.Context {
 	return context.WithValue(ctx, requestStatsKey{}, &Stats{
 		registry: make(map[string]int),

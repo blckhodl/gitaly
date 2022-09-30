@@ -7,7 +7,6 @@ type poolOptions struct {
 	dialOptions []grpc.DialOption
 }
 
-//nolint:stylecheck // This is unintentionally missing documentation.
 type PoolOption func(*poolOptions)
 
 func applyPoolOptions(options []PoolOption) *poolOptions {

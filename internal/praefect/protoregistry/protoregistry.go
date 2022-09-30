@@ -100,7 +100,6 @@ func (mi MethodInfo) AdditionalRepo(msg proto.Message) (*gitalypb.Repository, bo
 	return repo, true, err
 }
 
-//nolint:stylecheck // This is unintentionally missing documentation.
 func (mi MethodInfo) FullMethodName() string {
 	return mi.fullMethodName
 }

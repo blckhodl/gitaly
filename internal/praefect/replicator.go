@@ -287,12 +287,10 @@ func NewReplMgr(log logrus.FieldLogger, storageNames map[string][]string, queue 
 	return r
 }
 
-//nolint:stylecheck // This is unintentionally missing documentation.
 func (r ReplMgr) Describe(ch chan<- *prometheus.Desc) {
 	prometheus.DescribeByCollect(r, ch)
 }
 
-//nolint:stylecheck // This is unintentionally missing documentation.
 func (r ReplMgr) Collect(ch chan<- prometheus.Metric) {
 	r.replInFlightMetric.Collect(ch)
 }
